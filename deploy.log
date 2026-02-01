@@ -1,0 +1,16 @@
+
+=== Deploying to 'veiculosnapraianao'...
+
+i  deploying hosting
+i  hosting[veiculosnapraianao]: beginning deploy...
+i  hosting[veiculosnapraianao]: found 5 files in public
+✔  hosting[veiculosnapraianao]: file upload complete
+i  hosting[veiculosnapraianao]: finalizing version...
+✔  hosting[veiculosnapraianao]: version finalized
+i  hosting[veiculosnapraianao]: releasing new version...
+✔  hosting[veiculosnapraianao]: release complete
+
+✔  Deploy complete!
+
+Project Console: https://console.firebase.google.com/project/veiculosnapraianao/overview
+Hosting URL: https://veiculosnapraianao.web.app

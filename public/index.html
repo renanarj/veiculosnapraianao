@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="description" content="Aplicação responsiva pronta para publicar no Firebase Hosting." />
+    <title>Formulário de Fiscalização</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+  </head>
+  <body>
+    <div id="loginScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <img src="/logo%20vpn.png" alt="Logo VPN" class="logo" />
+        </div>
+        <h1>Veículos na Praia Não</h1>
+        <p class="auth-subtitle">Acesso exclusivo para agentes cadastrados.</p>
+        <div class="auth-info">
+          <div class="auth-info-item">
+            <strong>Objetivo</strong>
+            <span>Registrar ocorrências e identificar reincidências.</span>
+          </div>
+          <div class="auth-info-item">
+            <strong>Dashboard</strong>
+            <span>Visão por agente, mês, data e reincidências.</span>
+          </div>
+          <div class="auth-info-item">
+            <strong>Cadastro</strong>
+            <span>Novo registro com fotos e relatório PDF.</span>
+          </div>
+        </div>
+        <form id="loginForm" class="auth-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="loginAgent" class="required">Nome do Agente</label>
+            <select id="loginAgent" required>
+              <option value="">Selecione um agente</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="loginPassword" class="required">Senha</label>
+            <input type="password" id="loginPassword" placeholder="Digite sua senha" required />
+          </div>
+          <button type="submit">Entrar</button>
+          <div id="loginError" class="alert-error"></div>
+        </form>
+        <div class="auth-hint">Senha padrão: primeiro nome + 2026 (ex: renan2026)</div>
+      </div>
+    </div>
+
+    <div id="appShell" class="app-shell hidden">
+      <header class="app-header">
+        <div class="app-title">
+          <h1>Veículos na Praia Não</h1>
+          <span class="app-subtitle">Sistema de Fiscalização</span>
+        </div>
+        <div class="app-user">
+          <span id="currentAgent">Agente: --</span>
+          <button type="button" id="logoutBtn" class="ghost-btn">Sair</button>
+        </div>
+      </header>
+
+      <main class="app-content">
+        <section id="dashboardView" class="view">
+          <div class="dashboard-grid">
+            <div class="card">
+              <p class="card-label">Total de registros</p>
+              <h2 id="statTotal">0</h2>
+            </div>
+            <div class="card">
+              <p class="card-label">Condutores únicos</p>
+              <h2 id="statDrivers">0</h2>
+            </div>
+            <div class="card">
+              <p class="card-label">Veículos únicos</p>
+              <h2 id="statVehicles">0</h2>
+            </div>
+            <div class="card">
+              <p class="card-label">Reincidências</p>
+              <h2 id="statDuplicates">0</h2>
+            </div>
+            <div class="card">
+              <p class="card-label">Mês atual</p>
+              <h2 id="statCurrentMonth">0</h2>
+            </div>
+          </div>
+
+          <div class="filters-toggle">
+            <button type="button" id="toggleFiltersBtn" class="ghost-btn">Mostrar filtros</button>
+          </div>
+
+          <div id="dashboardFiltersPanel" class="hidden">
+            <div class="card filters-card">
+              <div class="filters-header">
+                <h3>Filtros para análise</h3>
+                <div class="filters-actions">
+                  <button type="button" id="applyFiltersBtn" class="ghost-btn">Buscar</button>
+                  <button type="button" id="clearFiltersBtn" class="ghost-btn">Limpar filtros</button>
+                </div>
+              </div>
+              <div class="filters-grid">
+                <div>
+                  <label for="filterAgent">Agente</label>
+                  <select id="filterAgent">
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="filterMonth">Mês</label>
+                  <select id="filterMonth">
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="filterYear">Ano</label>
+                  <select id="filterYear">
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="filterDateFrom">Data inicial</label>
+                  <input type="date" id="filterDateFrom" />
+                </div>
+                <div>
+                  <label for="filterDateTo">Data final</label>
+                  <input type="date" id="filterDateTo" />
+                </div>
+                <div>
+                  <label for="filterSearch">Busca (condutor/placa)</label>
+                  <input type="text" id="filterSearch" placeholder="Ex: JOÃO, ABC1D23" />
+                </div>
+                <label class="checkbox-line">
+                  <input type="checkbox" id="filterDuplicates" />
+                  Somente reincidentes
+                </label>
+              </div>
+            </div>
+
+            <div class="dashboard-columns">
+              <div class="card">
+                <h3>Cadastros por agente</h3>
+                <div id="byAgentList" class="stat-list"></div>
+              </div>
+              <div class="card">
+                <h3>Cadastros por mês</h3>
+                <div id="byMonthList" class="stat-list"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Condutores reincidentes</h3>
+              <div id="duplicateDriversList" class="stat-list"></div>
+            </div>
+          </div>
+
+          <div id="records-section" class="card">
+            <h3>Registro de Ocorrências</h3>
+            <div id="records-list"></div>
+            <div class="buttons-container">
+              <button type="button" id="generatePdfBtn">Gerar Relatório PDF</button>
+            </div>
+          </div>
+
+          <div class="dashboard-actions">
+            <button type="button" id="openFormBtn" class="floating-btn">Novo registro</button>
+          </div>
+        </section>
+
+        <section id="formView" class="view hidden">
+          <div class="dashboard-actions">
+            <button type="button" id="backToDashboardBtn" class="ghost-btn">Voltar ao dashboard</button>
+          </div>
+          <div class="header-container">
+            <img
+              src="https://www.gov.br/icmbio/pt-br/assuntos/biodiversidade/unidade-de-conservacao/unidades-de-biomas/marinho/lista-de-ucs/apa-delta-do-parnaiba/apa-delta-do-parnaiba/@@govbr.institucional.banner/ff6bf71d-1be8-4a0d-ad24-a1cb45b9de96/@@images/cff0e59d-e3b0-4d48-8559-bfd1f8f4cdc1.jpeg"
+              alt="Logo APA Delta do Parnaíba"
+              class="logo"
+            />
+            <h1>Formulário de Fiscalização</h1>
+            <img
+              src="https://static.wixstatic.com/media/2b2627_cdce97af19cc41f781de090d6e2cbc00~mv2.png/v1/fill/w_240,h_268,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20ICMBIO_SITE%20NORONHA.png"
+              alt="Logo ICMBio"
+              class="logo"
+            />
+          </div>
+
+          <div class="agent-name">Agente: <span id="agentDisplay">[Nome do Agente]</span></div>
+
+          <div class="form-container">
+            <form id="fiscalizationForm" onsubmit="return false;">
+              <div id="alertSuccess" class="alert-success"></div>
+              <div id="alertError" class="alert-error"></div>
+
+              <div class="section-title">Informações da Ocorrência</div>
+
+              <div class="form-group">
+                <label for="occurrenceNumber" class="required">Número da Ocorrência</label>
+                <input type="text" id="occurrenceNumber" name="occurrenceNumber" readonly />
+              </div>
+
+              <div class="form-group">
+                <label for="agent" class="required">Nome do Agente</label>
+                <select id="agent" name="agent" required>
+                  <option value="">Selecione um agente</option>
+                  <option value="ADRIANO RICARDO DAMATO ROCHA DE SOUZA">ADRIANO RICARDO DAMATO ROCHA DE SOUZA</option>
+                  <option value="ANTONIO ALVES PEREIRA FILHO">ANTONIO ALVES PEREIRA FILHO</option>
+                  <option value="ARTHUR TALVARA DOS SANTOS NASCIMENTO">ARTHUR TALVARA DOS SANTOS NASCIMENTO</option>
+                  <option value="JANNAYRA FERREIRA SANTOS">JANNAYRA FERREIRA SANTOS</option>
+                  <option value="JOAO CARLOS CARVALHO AIRES">JOAO CARLOS CARVALHO AIRES</option>
+                  <option value="JOÃO EDUARDO DOS SANTOS GALDINO">JOÃO EDUARDO DOS SANTOS GALDINO</option>
+                  <option value="LUIS CLAUDIONOR SILVA MOURA">LUIS CLAUDIONOR SILVA MOURA</option>
+                  <option value="MARCOS MACIEL FERREIRA DA SILVA">MARCOS MACIEL FERREIRA DA SILVA</option>
+                  <option value="RENAN ARAUJO E SILVA">RENAN ARAUJO E SILVA</option>
+                </select>
+              </div>
+
+        <div class="form-group">
+          <label for="date" class="required">Data da Ocorrência</label>
+          <input type="date" id="date" name="date" required />
+        </div>
+
+        <div class="form-group">
+          <label for="time" class="required">Hora da Ocorrência</label>
+          <div class="time-container">
+            <input type="time" id="time" name="time" required />
+            <button type="button" id="setTimeBtn">Hora Atual</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="location" class="required">Local da Ocorrência</label>
+          <div class="location-container">
+            <input
+              type="text"
+              id="location"
+              name="location"
+              placeholder="Ao clicar em obter coordenada, autorize a localização."
+              required
+            />
+            <button type="button" id="getLocationBtn">
+              <span id="locationBtnText">Obter Coordenadas</span>
+              <span id="locationLoading" class="loading" style="display: none;"></span>
+            </button>
+          </div>
+          <div id="locationError" class="location-error"></div>
+        </div>
+
+        <div class="section-title">Dados do Condutor</div>
+
+        <div class="two-columns">
+          <div class="form-group">
+            <label for="infractorName" class="required">Nome do Condutor</label>
+            <input
+              type="text"
+              id="infractorName"
+              name="infractorName"
+              placeholder="Nome completo"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="infractorDoc">CPF</label>
+            <input
+              type="text"
+              id="infractorDoc"
+              name="infractorDoc"
+              placeholder="000.000.000-00"
+              maxlength="14"
+              inputmode="numeric"
+            />
+          </div>
+        </div>
+
+        <div class="two-columns">
+          <div class="form-group">
+            <label for="whatsapp">WhatsApp do Condutor</label>
+            <input
+              type="tel"
+              id="whatsapp"
+              name="whatsapp"
+              placeholder="(86) 99999-9999"
+              maxlength="15"
+            />
+          </div>
+
+          <div class="form-group">
+            <label>&nbsp;</label>
+            <button type="button" id="sendWhatsAppBtn" class="whatsapp-button" disabled>
+              <svg class="whatsapp-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"
+                />
+              </svg>
+              Enviar WhatsApp
+            </button>
+          </div>
+        </div>
+
+        <div class="section-title">Dados do Veículo</div>
+
+        <div class="form-group">
+          <label for="vehiclePlate" class="required">Placa do Veículo</label>
+          <input
+            type="text"
+            id="vehiclePlate"
+            name="vehiclePlate"
+            placeholder="AAA0A00"
+            maxlength="7"
+            required
+          />
+        </div>
+
+        <div class="two-columns">
+          <div class="form-group">
+            <label for="vehicleModel" class="required">Modelo do Veículo</label>
+            <input type="text" id="vehicleModel" name="vehicleModel" required />
+          </div>
+
+          <div class="form-group">
+            <label for="vehicleColor" class="required">Cor</label>
+            <input type="text" id="vehicleColor" name="vehicleColor" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="vehicleYear">Ano do Veículo</label>
+          <input type="number" id="vehicleYear" name="vehicleYear" min="1900" max="2099" inputmode="numeric" />
+        </div>
+
+        <div class="section-title">Registro Fotográfico</div>
+
+        <div class="form-group">
+          <label>Fotos do Veículo</label>
+          <button type="button" id="uploadPhoto">Adicionar Foto</button>
+          <div class="camera-container">
+            <div class="camera-preview-wrapper">
+              <video id="cameraPreview" autoplay playsinline></video>
+              <div class="camera-overlay" aria-hidden="true">
+                <div id="cameraOverlayBox" class="camera-overlay-box" role="presentation">
+                  <div id="cameraOverlayCoords" class="camera-overlay-coords">Sem coordenadas</div>
+                </div>
+                <img
+                  id="cameraOverlayLogo"
+                  class="camera-overlay-logo"
+                  src="/icmbio%20horizontal@1000x-8.png"
+                  alt="ICMBio"
+                />
+              </div>
+            </div>
+            <div class="camera-buttons">
+              <button type="button" id="capturePhoto">Capturar Foto</button>
+              <button type="button" id="switchCamera" class="ghost-btn hidden">Virar câmera</button>
+              <button type="button" id="cancelCamera">Cancelar</button>
+            </div>
+          </div>
+          <input type="file" id="photosInput" accept="image/*" multiple style="display: none;" />
+          <div id="photoPreviewContainer" class="photo-preview-container"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="observations">Observações</label>
+          <textarea id="observations" name="observations" rows="4"></textarea>
+        </div>
+
+        <div class="buttons-container">
+          <button type="button" id="addRecordBtn">Salvar ocorrência</button>
+        </div>
+
+            </form>
+          </div>
+        </section>
+
+        <section id="recordDetailView" class="view hidden">
+          <div class="dashboard-actions">
+            <button type="button" id="backToDashboardFromDetail" class="ghost-btn">Voltar ao dashboard</button>
+          </div>
+          <div class="card">
+            <h3>Detalhes do Registro</h3>
+            <div id="recordDetailHeader" class="record-detail-header"></div>
+            <div id="recordDetailBody" class="record-detail-body"></div>
+            <div class="record-detail-actions">
+              <a id="recordPdfLink" class="ghost-btn" href="#" target="_blank" rel="noopener">Baixar PDF</a>
+            </div>
+            <div id="recordPhotos" class="record-photo-grid"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer app-footer">
+        <span>© 2026 Fiscalização Ambiental</span>
+        <span>Hospedado no Firebase</span>
+      </footer>
+      <div id="savingOverlay" class="saving-overlay hidden" aria-live="polite" aria-busy="true">
+        <div class="saving-card">
+          <img
+            class="saving-image"
+            alt="Carregando"
+            src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' stroke='%23588526' stroke-width='10' fill='none' stroke-linecap='round' stroke-dasharray='210' stroke-dashoffset='60'><animateTransform attributeName='transform' type='rotate' from='0 50 50' to='360 50 50' dur='1s' repeatCount='indefinite'/></circle></svg>"
+          />
+          <p>Salvando ocorrência...</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
