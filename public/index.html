@@ -13,7 +13,7 @@
     <div id="loginScreen" class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <img src="/logo%20vpn.png" alt="Logo VPN" class="logo" />
+          <img src="/logo vpn.png" alt="Logo VPN" class="logo" />
         </div>
         <h1>Veículos na Praia Não</h1>
         <p class="auth-subtitle">Acesso exclusivo para agentes cadastrados.</p>
@@ -172,17 +172,7 @@
             <button type="button" id="backToDashboardBtn" class="ghost-btn">Voltar ao dashboard</button>
           </div>
           <div class="header-container">
-            <img
-              src="https://www.gov.br/icmbio/pt-br/assuntos/biodiversidade/unidade-de-conservacao/unidades-de-biomas/marinho/lista-de-ucs/apa-delta-do-parnaiba/apa-delta-do-parnaiba/@@govbr.institucional.banner/ff6bf71d-1be8-4a0d-ad24-a1cb45b9de96/@@images/cff0e59d-e3b0-4d48-8559-bfd1f8f4cdc1.jpeg"
-              alt="Logo APA Delta do Parnaíba"
-              class="logo"
-            />
             <h1>Formulário de Fiscalização</h1>
-            <img
-              src="https://static.wixstatic.com/media/2b2627_cdce97af19cc41f781de090d6e2cbc00~mv2.png/v1/fill/w_240,h_268,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20ICMBIO_SITE%20NORONHA.png"
-              alt="Logo ICMBio"
-              class="logo"
-            />
           </div>
 
           <div class="agent-name">Agente: <span id="agentDisplay">[Nome do Agente]</span></div>
@@ -336,23 +326,9 @@
           <label>Fotos do Veículo</label>
           <button type="button" id="uploadPhoto">Adicionar Foto</button>
           <div class="camera-container">
-            <div class="camera-preview-wrapper">
-              <video id="cameraPreview" autoplay playsinline></video>
-              <div class="camera-overlay" aria-hidden="true">
-                <div id="cameraOverlayBox" class="camera-overlay-box" role="presentation">
-                  <div id="cameraOverlayCoords" class="camera-overlay-coords">Sem coordenadas</div>
-                </div>
-                <img
-                  id="cameraOverlayLogo"
-                  class="camera-overlay-logo"
-                  src="/icmbio%20horizontal@1000x-8.png"
-                  alt="ICMBio"
-                />
-              </div>
-            </div>
+            <video id="cameraPreview" autoplay playsinline></video>
             <div class="camera-buttons">
               <button type="button" id="capturePhoto">Capturar Foto</button>
-              <button type="button" id="switchCamera" class="ghost-btn hidden">Virar câmera</button>
               <button type="button" id="cancelCamera">Cancelar</button>
             </div>
           </div>
@@ -366,7 +342,7 @@
         </div>
 
         <div class="buttons-container">
-          <button type="button" id="addRecordBtn">Salvar ocorrência</button>
+          <button type="button" id="addRecordBtn">Adicionar Registro</button>
         </div>
 
             </form>
@@ -401,6 +377,48 @@
             src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' stroke='%23588526' stroke-width='10' fill='none' stroke-linecap='round' stroke-dasharray='210' stroke-dashoffset='60'><animateTransform attributeName='transform' type='rotate' from='0 50 50' to='360 50 50' dur='1s' repeatCount='indefinite'/></circle></svg>"
           />
           <p>Salvando ocorrência...</p>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="actionUnavailableModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="actionUnavailableTitle"
+      aria-describedby="actionUnavailableMessage"
+    >
+      <div class="modal-card">
+        <h3 id="actionUnavailableTitle">Aviso</h3>
+        <p id="actionUnavailableMessage">Ação não disponível nesta versão de teste.</p>
+        <div class="modal-actions">
+          <button type="button" id="actionUnavailableOkBtn">Ok</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="deleteConfirmModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deleteConfirmTitle"
+    >
+      <div class="modal-card">
+        <h3 id="deleteConfirmTitle">Confirmar Exclusão</h3>
+        <p>Para remover este registro, digite sua senha de login:</p>
+        <input
+          type="password"
+          id="deleteConfirmPassword"
+          class="modal-password-input"
+          placeholder="Digite sua senha"
+          autocomplete="off"
+        />
+        <div id="deletePasswordError" class="alert-error" style="margin-top: 10px;"></div>
+        <div class="modal-actions">
+          <button type="button" id="cancelDeleteBtn" class="ghost-btn">Cancelar</button>
+          <button type="button" id="confirmDeleteBtn" class="delete-btn">Remover Registro</button>
         </div>
       </div>
     </div>
