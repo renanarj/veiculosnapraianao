@@ -1,17 +1,28 @@
 #!/bin/bash
-# Script para baixar a versão mais recente do site online
+# Script para sincronizar com a versão online do Firebase
 
-echo "🔄 Baixando versão online mais recente..."
+echo "🔄 Sincronizando com a versão online..."
+echo ""
 
 cd /workspaces/codespaces-blank/public
 
+# Baixar arquivos
 curl -s -o index.html "https://veiculosnapraianao.web.app/index.html"
 curl -s -o app.js "https://veiculosnapraianao.web.app/app.js"
 curl -s -o styles.css "https://veiculosnapraianao.web.app/styles.css"
 
-echo "✅ Arquivos atualizados com a versão online!"
+cd /workspaces/codespaces-blank
+
+# Fazer commit automático
+git add public/
+git commit -m "chore: sincronizar com versão online do Firebase" --allow-empty
+
+echo "✅ Sincronização concluída!"
 echo ""
-echo "Arquivos baixados:"
-echo "  - index.html"
-echo "  - app.js"
-echo "  - styles.css"
+echo "Versão online baixada em:"
+echo "  📁 public/index.html"
+echo "  📁 public/app.js"
+echo "  📁 public/styles.css"
+echo ""
+echo "💾 Alterações salvas no Git"
+
