@@ -1310,10 +1310,73 @@ const renderRecordToDoc = (doc, record) => {
   );
 };
 
+// Função para carregar imagem de URL e converter para base64
+const loadImageAsBase64 = (url) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        resolve(dataUrl);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error('Erro ao carregar imagem'));
+    img.src = url;
+  });
+};
+
+// Função para preparar fotos do registro (carrega URLs do Google Drive)
+const prepareRecordPhotos = async (record) => {
+  if (!record.photos || !record.photos.length) return record;
+  
+  const preparedPhotos = [];
+  
+  for (const photo of record.photos) {
+    try {
+      // Se a foto já tem dados base64, usa direto
+      if (photo.data && photo.data.startsWith('data:image')) {
+        preparedPhotos.push(photo);
+      } 
+      // Se é um link do Google Drive ou URL externa
+      else if (photo.url || (typeof photo === 'string' && photo.startsWith('http'))) {
+        const url = photo.url || photo;
+        // Tenta converter links do Google Drive para formato direto
+        let directUrl = url;
+        if (url.includes('drive.google.com')) {
+          const fileId = url.match(/[-\w]{25,}/);
+          if (fileId) {
+            directUrl = `https://drive.google.com/uc?export=view&id=${fileId[0]}`;
+          }
+        }
+        
+        const base64Data = await loadImageAsBase64(directUrl);
+        preparedPhotos.push({ data: base64Data, name: photo.name || 'foto.jpg' });
+      }
+    } catch (error) {
+      console.log('Erro ao carregar foto:', error);
+      // Continua mesmo se uma foto falhar
+    }
+  }
+  
+  return { ...record, photos: preparedPhotos };
+};
+
 const generatePDFBlob = async (record) => {
   if (!jsPDF) throw new Error('jsPDF não disponível');
+  
+  // Prepara as fotos (carrega URLs se necessário)
+  const preparedRecord = await prepareRecordPhotos(record);
+  
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  renderRecordToDoc(doc, record);
+  renderRecordToDoc(doc, preparedRecord);
   return doc.output('blob');
 };
 
@@ -1377,15 +1440,20 @@ const generatePDF = async () => {
   }
   try {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    allRecords.forEach((record, index) => {
+    
+    // Processa cada registro preparando as fotos
+    for (let index = 0; index < allRecords.length; index++) {
       if (index > 0) {
         doc.addPage();
       }
-      renderRecordToDoc(doc, record);
-    });
+      const preparedRecord = await prepareRecordPhotos(allRecords[index]);
+      renderRecordToDoc(doc, preparedRecord);
+    }
+    
     doc.save('Relatorio_Comunicados.pdf');
   } catch (error) {
     showAlert(alertError, 'Erro ao gerar relatório PDF.');
+    console.error('Erro ao gerar PDF:', error);
   }
 };
 
