@@ -1299,6 +1299,48 @@ const renderRecordToDoc = (doc, record) => {
       }
     });
   }
+  
+  // Se houver links externos de fotos (Google Drive, etc)
+  if (record.externalPhotoLinks && record.externalPhotoLinks.length > 0) {
+    yPos += 10;
+    
+    // Verifica se precisa de nova página
+    if (yPos > 250) {
+      doc.addPage();
+      yPos = 20;
+    }
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 69, 33);
+    doc.text('FOTOS ARMAZENADAS EXTERNAMENTE', marginLeft, yPos);
+    yPos += 8;
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text('As seguintes fotos estão disponíveis nos links abaixo:', marginLeft, yPos);
+    yPos += 8;
+    
+    record.externalPhotoLinks.forEach((link, index) => {
+      if (yPos > 280) {
+        doc.addPage();
+        yPos = 20;
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Foto ${index + 1}:`, marginLeft, yPos);
+      yPos += 5;
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(0, 0, 255);
+      const linkLines = doc.splitTextToSize(link, contentWidth - 10);
+      linkLines.forEach((line) => {
+        doc.text(line, marginLeft + 5, yPos);
+        yPos += 5;
+      });
+      doc.setTextColor(0, 0, 0);
+      yPos += 3;
+    });
+  }
 
   doc.setFontSize(8);
   doc.setTextColor(100);
@@ -1310,34 +1352,12 @@ const renderRecordToDoc = (doc, record) => {
   );
 };
 
-// Função para carregar imagem de URL e converter para base64
-const loadImageAsBase64 = (url) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      try {
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        resolve(dataUrl);
-      } catch (e) {
-        reject(e);
-      }
-    };
-    img.onerror = () => reject(new Error('Erro ao carregar imagem'));
-    img.src = url;
-  });
-};
-
-// Função para preparar fotos do registro (carrega URLs do Google Drive)
+// Função para preparar fotos do registro (separa base64 de URLs externas)
 const prepareRecordPhotos = async (record) => {
   if (!record.photos || !record.photos.length) return record;
   
   const preparedPhotos = [];
+  const externalLinks = [];
   
   for (const photo of record.photos) {
     try {
@@ -1348,25 +1368,15 @@ const prepareRecordPhotos = async (record) => {
       // Se é um link do Google Drive ou URL externa
       else if (photo.url || (typeof photo === 'string' && photo.startsWith('http'))) {
         const url = photo.url || photo;
-        // Tenta converter links do Google Drive para formato direto
-        let directUrl = url;
-        if (url.includes('drive.google.com')) {
-          const fileId = url.match(/[-\w]{25,}/);
-          if (fileId) {
-            directUrl = `https://drive.google.com/uc?export=view&id=${fileId[0]}`;
-          }
-        }
-        
-        const base64Data = await loadImageAsBase64(directUrl);
-        preparedPhotos.push({ data: base64Data, name: photo.name || 'foto.jpg' });
+        // Adiciona o link para a lista de links externos
+        externalLinks.push(url);
       }
     } catch (error) {
-      console.log('Erro ao carregar foto:', error);
-      // Continua mesmo se uma foto falhar
+      console.log('Erro ao processar foto:', error);
     }
   }
   
-  return { ...record, photos: preparedPhotos };
+  return { ...record, photos: preparedPhotos, externalPhotoLinks: externalLinks };
 };
 
 const generatePDFBlob = async (record) => {
