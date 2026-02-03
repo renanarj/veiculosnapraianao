@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script para publicar alterações locais no Firebase Hosting
+# Script para publicar alterações no Firebase Hosting E fazer push no GitHub
 
 echo "📝 Analisando mudanças..."
 echo ""
@@ -17,13 +17,24 @@ echo ""
 firebase deploy --only hosting
 
 echo ""
-echo "✅ Site atualizado!"
+echo "✅ Site atualizado no Firebase!"
 echo "🌐 Acesse: https://veiculosnapraianao.web.app/"
 echo ""
 
 # Salvar alterações no Git
-git add public/ deploy.log .firebase/
-git commit -m "chore: publicado no Firebase Hosting" --allow-empty
+echo "💾 Enviando para GitHub..."
+git add public/ deploy.log .firebase/ 2>/dev/null || true
+git commit -m "chore: publicado no Firebase Hosting" --allow-empty --quiet
 
-echo "💾 Alterações salvas no Git local"
+# Fazer push no GitHub
+if git push origin main 2>/dev/null; then
+    echo "✅ GitHub atualizado!"
+    echo "📦 Repositório: https://github.com/renanarj/veiculosnapraianao"
+else
+    echo "⚠️  Erro ao enviar para GitHub. Verifique sua conexão."
+fi
+
+echo ""
+echo "🎉 Tudo sincronizado!"
+
 
