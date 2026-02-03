@@ -1055,7 +1055,7 @@ const editRecord = (index) => {
   document.getElementById('vehicleColor').value = record.vehicleColor || '';
   document.getElementById('vehicleYear').value = record.vehicleYear || '';
   document.getElementById('location').value = record.location || '';
-  document.getElementById('observations').value = record.observations || '';
+  document.getElementById('observations').value = 'Ocorrência editada';
   whatsappBtn.disabled = false;
 
   photoPreviewContainer.innerHTML = '';
