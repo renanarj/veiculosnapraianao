@@ -38,6 +38,7 @@ const loginForm = document.getElementById('loginForm');
 const loginAgent = document.getElementById('loginAgent');
 const loginPassword = document.getElementById('loginPassword');
 const loginError = document.getElementById('loginError');
+const loginBtn = document.getElementById('loginBtn');
 const currentAgent = document.getElementById('currentAgent');
 const logoutBtn = document.getElementById('logoutBtn');
 const views = document.querySelectorAll('.view');
@@ -1721,6 +1722,26 @@ loginForm.addEventListener('submit', (event) => {
   event.preventDefault();
   if (handleLogin()) {
     showView('dashboardView');
+  }
+});
+
+// Adicionar também um listener direto no botão para mobile
+if (loginBtn) {
+  loginBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (handleLogin()) {
+      showView('dashboardView');
+    }
+  });
+}
+
+// Permitir login ao pressionar Enter no campo de senha
+loginPassword.addEventListener('keypress', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    if (handleLogin()) {
+      showView('dashboardView');
+    }
   }
 });
 
