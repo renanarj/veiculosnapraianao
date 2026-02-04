@@ -1616,7 +1616,7 @@ addRecordBtn.addEventListener('click', () => {
   addRecord();
 });
 generatePdfBtn.addEventListener('click', generatePDF);
-uploadPhotoBtn.addEventListener('click', () => {
+
 const startDraggingOverlay = (e) => {
   isDraggingOverlay = true;
   dragStart.x = e.clientX || e.touches[0].clientX;
@@ -1657,6 +1657,7 @@ const toggleCamera = async () => {
   }
 };
 
+uploadPhotoBtn.addEventListener('click', () => {
   // Mostrar opção para escolher entre câmera ou galeria
   const choice = confirm('Deseja usar a câmera?\n\nClique em "OK" para câmera ou "Cancelar" para escolher da galeria.');
   if (choice) {
