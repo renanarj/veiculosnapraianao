@@ -24,8 +24,14 @@ const photosInput = document.getElementById('photosInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
 const cameraContainer = document.querySelector('.camera-container');
 const cameraPreview = document.getElementById('cameraPreview');
+const cameraOverlay = document.getElementById('cameraOverlay');
 const capturePhotoBtn = document.getElementById('capturePhoto');
 const cancelCameraBtn = document.getElementById('cancelCamera');
+const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+const overlayOccurrence = document.getElementById('overlayOccurrence');
+const overlayDateTime = document.getElementById('overlayDateTime');
+const overlayCoordinates = document.getElementById('overlayCoordinates');
+const overlayAgent = document.getElementById('overlayAgent');
 const loginScreen = document.getElementById('loginScreen');
 const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
@@ -80,6 +86,10 @@ let currentlyEditingIndex = -1;
 let stream = null;
 let photosData = [];
 let pendingDeleteIndex = -1;
+let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
+let overlayPosition = { x: 0, y: 0 }; // Posição da overlay de câmera
+let isDraggingOverlay = false;
+let dragStart = { x: 0, y: 0 };
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 
@@ -468,9 +478,12 @@ const getCurrentLocation = () => {
 
 const startCamera = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: cameraFacingMode }
+    });
     cameraPreview.srcObject = stream;
     cameraContainer.style.display = 'block';
+    updateOverlayInfo();
   } catch (error) {
     showAlert(alertError, 'Não foi possível acessar a câmera.');
   }
@@ -482,6 +495,15 @@ const stopCamera = () => {
     stream = null;
   }
   cameraContainer.style.display = 'none';
+};
+
+const updateOverlayInfo = () => {
+  overlayOccurrence.textContent = occurrenceNumberInput.value || '-';
+  const date = dateInput.value || '-';
+  const time = timeInput.value || '-';
+  overlayDateTime.textContent = `${date} ${time}`;
+  overlayCoordinates.textContent = locationInput.value || '-';
+  overlayAgent.textContent = agentSelect.value || '-';
 };
 
 const addPhotoPreview = (dataUrl, fileName) => {
@@ -525,14 +547,85 @@ const handlePhotoUpload = (event) => {
   event.target.value = '';
 };
 
-const capturePhoto = () => {
+const capturePhoto = async () => {
   if (!stream) return;
+  
   const canvas = document.createElement('canvas');
   canvas.width = cameraPreview.videoWidth;
   canvas.height = cameraPreview.videoHeight;
   const context = canvas.getContext('2d');
+  
+  // Desenhar vídeo no canvas
   context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+  
+  // Desenhar informações no canvas
+  drawInfoOnCanvas(context, canvas.width, canvas.height);
+  
   addPhotoPreview(canvas.toDataURL('image/jpeg'), 'camera.jpg');
+};
+
+const drawInfoOnCanvas = (context, canvasWidth, canvasHeight) => {
+  const padding = 15;
+  const boxX = canvasWidth - 320 - padding;
+  const boxY = padding;
+  const boxWidth = 320;
+  const boxHeight = 180;
+  
+  // Fundo semi-transparente
+  context.fillStyle = 'rgba(0, 69, 33, 0.85)';
+  context.fillRect(boxX, boxY, boxWidth, boxHeight);
+  
+  // Borda
+  context.strokeStyle = '#b8d4af';
+  context.lineWidth = 3;
+  context.strokeRect(boxX, boxY, boxWidth, boxHeight);
+  
+  // Logo do ICMBio
+  const logoImg = new Image();
+  logoImg.src = '/icmbio horizontal.png';
+  logoImg.onload = () => {
+    const logoHeight = 30;
+    const logoWidth = (logoImg.width / logoImg.height) * logoHeight;
+    const logoCenterX = boxX + (boxWidth - logoWidth) / 2;
+    context.drawImage(logoImg, logoCenterX, boxY + 8, logoWidth, logoHeight);
+  };
+  
+  // Textos
+  context.font = 'bold 13px Arial';
+  context.fillStyle = '#ffffff';
+  
+  let textY = boxY + 50;
+  const lineHeight = 22;
+  
+  // Número da ocorrência
+  context.font = 'bold 12px Arial';
+  context.fillText('Ocorrência:', boxX + 10, textY);
+  context.font = 'normal 12px Arial';
+  context.fillText(occurrenceNumberInput.value || '-', boxX + 140, textY);
+  textY += lineHeight;
+  
+  // Data e hora
+  context.font = 'bold 12px Arial';
+  context.fillText('Data/Hora:', boxX + 10, textY);
+  context.font = 'normal 11px Arial';
+  const dateTimeText = `${dateInput.value || '-'} ${timeInput.value || '-'}`;
+  context.fillText(dateTimeText, boxX + 140, textY);
+  textY += lineHeight;
+  
+  // Coordenadas
+  context.font = 'bold 12px Arial';
+  context.fillText('Coordenadas:', boxX + 10, textY);
+  context.font = 'normal 10px Arial';
+  const coordText = (locationInput.value || '-').substring(0, 35);
+  context.fillText(coordText, boxX + 140, textY);
+  textY += lineHeight;
+  
+  // Agente
+  context.font = 'bold 12px Arial';
+  context.fillText('Agente:', boxX + 10, textY);
+  context.font = 'normal 10px Arial';
+  const agentText = (agentSelect.value || '-').substring(0, 25);
+  context.fillText(agentText, boxX + 140, textY);
 };
 
 const sendWhatsAppMessage = () => {
@@ -1524,6 +1617,46 @@ addRecordBtn.addEventListener('click', () => {
 });
 generatePdfBtn.addEventListener('click', generatePDF);
 uploadPhotoBtn.addEventListener('click', () => {
+const startDraggingOverlay = (e) => {
+  isDraggingOverlay = true;
+  dragStart.x = e.clientX || e.touches[0].clientX;
+  dragStart.y = e.clientY || e.touches[0].clientY;
+  cameraOverlay.classList.add('dragging');
+};
+
+const moveDraggingOverlay = (e) => {
+  if (!isDraggingOverlay || !cameraOverlay) return;
+  
+  const currentX = e.clientX || e.touches[0].clientX;
+  const currentY = e.clientY || e.touches[0].clientY;
+  
+  const deltaX = currentX - dragStart.x;
+  const deltaY = currentY - dragStart.y;
+  
+  overlayPosition.x += deltaX;
+  overlayPosition.y += deltaY;
+  
+  dragStart.x = currentX;
+  dragStart.y = currentY;
+  
+  cameraOverlay.style.transform = `translate(${overlayPosition.x}px, ${overlayPosition.y}px)`;
+};
+
+const stopDraggingOverlay = () => {
+  isDraggingOverlay = false;
+  cameraOverlay.classList.remove('dragging');
+};
+
+const toggleCamera = async () => {
+  if (stream) {
+    stopCamera();
+    // Alternar modo de câmera
+    cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+    toggleCameraBtn.textContent = cameraFacingMode === 'environment' ? 'Virar Câmera (Frontal)' : 'Virar Câmera (Traseira)';
+    setTimeout(() => startCamera(), 300);
+  }
+};
+
   // Mostrar opção para escolher entre câmera ou galeria
   const choice = confirm('Deseja usar a câmera?\n\nClique em "OK" para câmera ou "Cancelar" para escolher da galeria.');
   if (choice) {
@@ -1537,6 +1670,19 @@ uploadPhotoBtn.addEventListener('click', () => {
 photosInput.addEventListener('change', handlePhotoUpload);
 capturePhotoBtn.addEventListener('click', capturePhoto);
 cancelCameraBtn.addEventListener('click', stopCamera);
+toggleCameraBtn.addEventListener('click', toggleCamera);
+
+// Event listeners para drag and drop da overlay
+if (cameraOverlay) {
+  cameraOverlay.addEventListener('mousedown', startDraggingOverlay);
+  cameraOverlay.addEventListener('touchstart', startDraggingOverlay);
+  
+  document.addEventListener('mousemove', moveDraggingOverlay);
+  document.addEventListener('touchmove', moveDraggingOverlay, { passive: false });
+  
+  document.addEventListener('mouseup', stopDraggingOverlay);
+  document.addEventListener('touchend', stopDraggingOverlay);
+}
 
 // Event listeners para modal de confirmação de exclusão
 if (cancelDeleteBtn) {

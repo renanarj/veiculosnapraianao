@@ -327,7 +327,31 @@
           <button type="button" id="uploadPhoto">Adicionar Foto</button>
           <div class="camera-container">
             <video id="cameraPreview" autoplay playsinline></video>
+            <div id="cameraOverlay" class="camera-overlay draggable">
+              <div class="overlay-logo">
+                <img src="/icmbio horizontal.png" alt="ICMBio" />
+              </div>
+              <div class="overlay-info">
+                <div class="info-row">
+                  <span class="info-label">Ocorrência:</span>
+                  <span id="overlayOccurrence">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Data/Hora:</span>
+                  <span id="overlayDateTime">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Coordenadas:</span>
+                  <span id="overlayCoordinates">-</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Agente:</span>
+                  <span id="overlayAgent">-</span>
+                </div>
+              </div>
+            </div>
             <div class="camera-buttons">
+              <button type="button" id="toggleCameraBtn" class="ghost-btn">Virar Câmera</button>
               <button type="button" id="capturePhoto">Capturar Foto</button>
               <button type="button" id="cancelCamera">Cancelar</button>
             </div>
