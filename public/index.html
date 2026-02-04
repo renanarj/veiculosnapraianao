@@ -446,6 +446,19 @@
       </div>
     </div>
 
+    <div
+      id="photoModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Visualização de foto"
+    >
+      <div class="photo-modal-card">
+        <button type="button" id="photoModalClose" class="photo-modal-close" aria-label="Fechar">×</button>
+        <img id="photoModalImage" class="photo-modal-img" alt="Foto do veículo" />
+      </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>

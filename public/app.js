@@ -81,6 +81,9 @@ const deleteConfirmPassword = document.getElementById('deleteConfirmPassword');
 const deletePasswordError = document.getElementById('deletePasswordError');
 const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
 const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+const photoModal = document.getElementById('photoModal');
+const photoModalImage = document.getElementById('photoModalImage');
+const photoModalClose = document.getElementById('photoModalClose');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -407,6 +410,23 @@ const closePopup = () => {
   document.body.classList.remove('modal-open');
 };
 
+const openPhotoModal = (src, altText = 'Foto do veículo') => {
+  if (!photoModal || !photoModalImage) return;
+  photoModalImage.src = src;
+  photoModalImage.alt = altText;
+  photoModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+};
+
+const closePhotoModal = () => {
+  if (!photoModal) return;
+  photoModal.classList.add('hidden');
+  if (photoModalImage) {
+    photoModalImage.src = '';
+  }
+  document.body.classList.remove('modal-open');
+};
+
 if (actionUnavailableOkBtn) {
   actionUnavailableOkBtn.addEventListener('click', closePopup);
 }
@@ -419,9 +439,27 @@ if (actionUnavailableModal) {
   });
 }
 
+if (photoModalClose) {
+  photoModalClose.addEventListener('click', closePhotoModal);
+}
+
+if (photoModal) {
+  photoModal.addEventListener('click', (event) => {
+    if (event.target === photoModal) {
+      closePhotoModal();
+    }
+  });
+}
+
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && actionUnavailableModal && !actionUnavailableModal.classList.contains('hidden')) {
-    closePopup();
+  if (event.key === 'Escape') {
+    if (actionUnavailableModal && !actionUnavailableModal.classList.contains('hidden')) {
+      closePopup();
+      return;
+    }
+    if (photoModal && !photoModal.classList.contains('hidden')) {
+      closePhotoModal();
+    }
   }
 });
 
@@ -516,6 +554,7 @@ const addPhotoPreview = (dataUrl, fileName) => {
   const img = document.createElement('img');
   img.src = dataUrl;
   img.alt = fileName || 'Foto do veículo';
+  img.addEventListener('click', () => openPhotoModal(dataUrl, img.alt));
 
   const removeBtn = document.createElement('button');
   removeBtn.className = 'remove-photo';
@@ -548,85 +587,133 @@ const handlePhotoUpload = (event) => {
   event.target.value = '';
 };
 
+const loadImage = (src) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
+const trimTextToWidth = (context, text, maxWidth) => {
+  if (!text) return '-';
+  if (context.measureText(text).width <= maxWidth) return text;
+  let trimmed = text;
+  while (trimmed.length > 0 && context.measureText(`${trimmed}…`).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed ? `${trimmed}…` : '-';
+};
+
+const getOverlayCanvasBounds = () => {
+  if (!cameraOverlay || !cameraPreview) return null;
+  const overlayRect = cameraOverlay.getBoundingClientRect();
+  const previewRect = cameraPreview.getBoundingClientRect();
+  if (!overlayRect.width || !previewRect.width) return null;
+
+  const scaleX = cameraPreview.videoWidth / previewRect.width;
+  const scaleY = cameraPreview.videoHeight / previewRect.height;
+
+  return {
+    x: Math.max(0, (overlayRect.left - previewRect.left) * scaleX),
+    y: Math.max(0, (overlayRect.top - previewRect.top) * scaleY),
+    width: overlayRect.width * scaleX,
+    height: overlayRect.height * scaleY,
+  };
+};
+
 const capturePhoto = async () => {
   if (!stream) return;
-  
+
   const canvas = document.createElement('canvas');
   canvas.width = cameraPreview.videoWidth;
   canvas.height = cameraPreview.videoHeight;
   const context = canvas.getContext('2d');
-  
+
   // Desenhar vídeo no canvas
   context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
-  
-  // Desenhar informações no canvas
-  drawInfoOnCanvas(context, canvas.width, canvas.height);
-  
+
+  // Desenhar informações no canvas (com logo)
+  const overlayBounds = getOverlayCanvasBounds();
+  await drawInfoOnCanvas(context, canvas.width, canvas.height, overlayBounds);
+
   addPhotoPreview(canvas.toDataURL('image/jpeg'), 'camera.jpg');
 };
 
-const drawInfoOnCanvas = (context, canvasWidth, canvasHeight) => {
+const drawInfoOnCanvas = async (context, canvasWidth, canvasHeight, overlayBounds) => {
   const padding = 15;
-  const boxX = canvasWidth - 320 - padding;
-  const boxY = padding;
-  const boxWidth = 320;
-  const boxHeight = 180;
-  
-  // Fundo semi-transparente
-  context.fillStyle = 'rgba(0, 69, 33, 0.85)';
-  context.fillRect(boxX, boxY, boxWidth, boxHeight);
-  
+  const defaultWidth = 320;
+  const defaultHeight = 190;
+  const bounds = overlayBounds && overlayBounds.width && overlayBounds.height
+    ? overlayBounds
+    : {
+        x: canvasWidth - defaultWidth - padding,
+        y: padding,
+        width: defaultWidth,
+        height: defaultHeight,
+      };
+
+  const scale = Math.max(0.75, Math.min(bounds.width / 320, bounds.height / 190));
+  const basePadding = 8 * scale;
+
+  // Fundo do container
+  context.fillStyle = 'rgba(255, 255, 255, 0.88)';
+  context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+
   // Borda
-  context.strokeStyle = '#b8d4af';
-  context.lineWidth = 3;
-  context.strokeRect(boxX, boxY, boxWidth, boxHeight);
-  
-  // Logo do ICMBio
-  const logoImg = new Image();
-  logoImg.src = '/icmbio horizontal.png';
-  logoImg.onload = () => {
-    const logoHeight = 30;
-    const logoWidth = (logoImg.width / logoImg.height) * logoHeight;
-    const logoCenterX = boxX + (boxWidth - logoWidth) / 2;
-    context.drawImage(logoImg, logoCenterX, boxY + 8, logoWidth, logoHeight);
+  context.strokeStyle = '#cfe0c8';
+  context.lineWidth = Math.max(1, 2 * scale);
+  context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+
+  // Logo do ICMBio (canto superior direito)
+  const logoImg = await loadImage('/icmbio horizontal@1000x-8.png');
+  if (logoImg) {
+    const logoMaxHeight = 34 * scale;
+    const logoMaxWidth = Math.min(bounds.width * 0.55, 130 * scale);
+    const logoScale = Math.min(logoMaxWidth / logoImg.width, logoMaxHeight / logoImg.height, 1);
+    const logoWidth = logoImg.width * logoScale;
+    const logoHeight = logoImg.height * logoScale;
+    const logoX = bounds.x + bounds.width - logoWidth - basePadding;
+    const logoY = bounds.y + basePadding;
+    context.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
+  }
+
+  // Caixa de informações (canto inferior esquerdo)
+  const infoPadding = 6 * scale;
+  const lineHeight = Math.round(14 * scale);
+  const infoBoxWidth = Math.min(bounds.width - basePadding * 2, Math.max(170 * scale, bounds.width * 0.62));
+  const infoBoxHeight = lineHeight * 4 + infoPadding * 2;
+  const infoBoxX = bounds.x + basePadding;
+  const infoBoxY = bounds.y + bounds.height - infoBoxHeight - basePadding;
+
+  context.fillStyle = 'rgba(248, 250, 243, 0.85)';
+  context.fillRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight);
+  context.strokeStyle = '#dbe7d5';
+  context.lineWidth = Math.max(1, 1.5 * scale);
+  context.strokeRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight);
+
+  const labelFont = Math.round(11 * scale);
+  const valueFont = Math.round(10 * scale);
+  const labelWidth = Math.round(86 * scale);
+  const labelX = infoBoxX + infoPadding;
+  const valueX = labelX + labelWidth;
+  const maxValueWidth = infoBoxX + infoBoxWidth - infoPadding - valueX;
+
+  let textY = infoBoxY + infoPadding + lineHeight - Math.round(2 * scale);
+  const drawLine = (label, value) => {
+    context.font = `600 ${labelFont}px Arial`;
+    context.fillStyle = '#2a4a2a';
+    context.fillText(label, labelX, textY);
+    context.font = `normal ${valueFont}px Arial`;
+    context.fillStyle = '#1f2937';
+    context.fillText(trimTextToWidth(context, value, maxValueWidth), valueX, textY);
+    textY += lineHeight;
   };
-  
-  // Textos
-  context.font = 'bold 13px Arial';
-  context.fillStyle = '#ffffff';
-  
-  let textY = boxY + 50;
-  const lineHeight = 22;
-  
-  // Número da ocorrência
-  context.font = 'bold 12px Arial';
-  context.fillText('Ocorrência:', boxX + 10, textY);
-  context.font = 'normal 12px Arial';
-  context.fillText(occurrenceNumberInput.value || '-', boxX + 140, textY);
-  textY += lineHeight;
-  
-  // Data e hora
-  context.font = 'bold 12px Arial';
-  context.fillText('Data/Hora:', boxX + 10, textY);
-  context.font = 'normal 11px Arial';
-  const dateTimeText = `${dateInput.value || '-'} ${timeInput.value || '-'}`;
-  context.fillText(dateTimeText, boxX + 140, textY);
-  textY += lineHeight;
-  
-  // Coordenadas
-  context.font = 'bold 12px Arial';
-  context.fillText('Coordenadas:', boxX + 10, textY);
-  context.font = 'normal 10px Arial';
-  const coordText = (locationInput.value || '-').substring(0, 35);
-  context.fillText(coordText, boxX + 140, textY);
-  textY += lineHeight;
-  
-  // Agente
-  context.font = 'bold 12px Arial';
-  context.fillText('Agente:', boxX + 10, textY);
-  context.font = 'normal 10px Arial';
-  const agentText = (agentSelect.value || '-').substring(0, 25);
-  context.fillText(agentText, boxX + 140, textY);
+
+  drawLine('Ocorrência:', occurrenceNumberInput.value || '-');
+  drawLine('Data/Hora:', `${dateInput.value || '-'} ${timeInput.value || '-'}`);
+  drawLine('Coordenadas:', locationInput.value || '-');
+  drawLine('Agente:', agentSelect.value || '-');
 };
 
 const sendWhatsAppMessage = () => {
@@ -899,6 +986,7 @@ const renderRecordDetail = (record) => {
       const img = document.createElement('img');
       img.src = url;
       img.alt = 'Foto do veículo';
+      img.addEventListener('click', () => openPhotoModal(url, img.alt));
       recordPhotos.appendChild(img);
     });
   } else {
