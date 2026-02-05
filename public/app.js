@@ -22,16 +22,11 @@ const alertError = document.getElementById('alertError');
 const uploadPhotoBtn = document.getElementById('uploadPhoto');
 const photosInput = document.getElementById('photosInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
-const cameraContainer = document.querySelector('.camera-container');
-const cameraPreview = document.getElementById('cameraPreview');
-const cameraOverlay = document.getElementById('cameraOverlay');
-const capturePhotoBtn = document.getElementById('capturePhoto');
-const cancelCameraBtn = document.getElementById('cancelCamera');
-const toggleCameraBtn = document.getElementById('toggleCameraBtn');
-const overlayOccurrence = document.getElementById('overlayOccurrence');
-const overlayDateTime = document.getElementById('overlayDateTime');
-const overlayCoordinates = document.getElementById('overlayCoordinates');
-const overlayAgent = document.getElementById('overlayAgent');
+const fullscreenCameraModal = document.getElementById('fullscreenCameraModal');
+const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview');
+const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
+const cancelFullscreenCameraBtn = document.getElementById('cancelFullscreenCameraBtn');
+const toggleFrontCameraBtn = document.getElementById('toggleFrontCameraBtn');
 const loginScreen = document.getElementById('loginScreen');
 const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
@@ -91,9 +86,6 @@ let stream = null;
 let photosData = [];
 let pendingDeleteIndex = -1;
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
-let overlayPosition = { x: 0, y: 0 }; // Posição da overlay de câmera
-let isDraggingOverlay = false;
-let dragStart = { x: 0, y: 0 };
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 
@@ -515,34 +507,53 @@ const getCurrentLocation = () => {
   });
 };
 
-const startCamera = async () => {
+const openFullscreenCamera = async () => {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: cameraFacingMode }
     });
-    cameraPreview.srcObject = stream;
-    cameraContainer.style.display = 'block';
-    updateOverlayInfo();
+    fullscreenCameraPreview.srcObject = stream;
+    fullscreenCameraModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
   } catch (error) {
-    showAlert(alertError, 'Não foi possível acessar a câmera.');
+    console.error('Erro ao acessar câmera:', error);
+    showAlert(alertError, 'Não foi possível acessar a câmera do dispositivo.');
   }
 };
 
-const stopCamera = () => {
+const closeFullscreenCamera = () => {
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
     stream = null;
   }
-  cameraContainer.style.display = 'none';
+  fullscreenCameraModal.classList.add('hidden');
+  document.body.style.overflow = '';
 };
 
-const updateOverlayInfo = () => {
-  overlayOccurrence.textContent = occurrenceNumberInput.value || '-';
-  const date = dateInput.value || '-';
-  const time = timeInput.value || '-';
-  overlayDateTime.textContent = `${date} ${time}`;
-  overlayCoordinates.textContent = locationInput.value || '-';
-  overlayAgent.textContent = agentSelect.value || '-';
+const captureFullscreenPhoto = async () => {
+  if (!stream || !fullscreenCameraPreview.videoWidth) {
+    showAlert(alertError, 'Câmera não está pronta. Tente novamente.');
+    return;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = fullscreenCameraPreview.videoWidth;
+  canvas.height = fullscreenCameraPreview.videoHeight;
+  const context = canvas.getContext('2d');
+  context.drawImage(fullscreenCameraPreview, 0, 0, canvas.width, canvas.height);
+
+  const photoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+  addPhotoPreview(photoDataUrl, 'camera_' + new Date().getTime() + '.jpg');
+  
+  closeFullscreenCamera();
+  showAlert(alertSuccess, 'Foto capturada com sucesso!');
+};
+
+const toggleCameraFacingMode = () => {
+  if (!stream) return;
+  closeFullscreenCamera();
+  cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+  setTimeout(() => openFullscreenCamera(), 300);
 };
 
 const addPhotoPreview = (dataUrl, fileName) => {
@@ -585,135 +596,6 @@ const handlePhotoUpload = (event) => {
     reader.readAsDataURL(file);
   });
   event.target.value = '';
-};
-
-const loadImage = (src) =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-
-const trimTextToWidth = (context, text, maxWidth) => {
-  if (!text) return '-';
-  if (context.measureText(text).width <= maxWidth) return text;
-  let trimmed = text;
-  while (trimmed.length > 0 && context.measureText(`${trimmed}…`).width > maxWidth) {
-    trimmed = trimmed.slice(0, -1);
-  }
-  return trimmed ? `${trimmed}…` : '-';
-};
-
-const getOverlayCanvasBounds = () => {
-  if (!cameraOverlay || !cameraPreview) return null;
-  const overlayRect = cameraOverlay.getBoundingClientRect();
-  const previewRect = cameraPreview.getBoundingClientRect();
-  if (!overlayRect.width || !previewRect.width) return null;
-
-  const scaleX = cameraPreview.videoWidth / previewRect.width;
-  const scaleY = cameraPreview.videoHeight / previewRect.height;
-
-  return {
-    x: Math.max(0, (overlayRect.left - previewRect.left) * scaleX),
-    y: Math.max(0, (overlayRect.top - previewRect.top) * scaleY),
-    width: overlayRect.width * scaleX,
-    height: overlayRect.height * scaleY,
-  };
-};
-
-const capturePhoto = async () => {
-  if (!stream) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = cameraPreview.videoWidth;
-  canvas.height = cameraPreview.videoHeight;
-  const context = canvas.getContext('2d');
-
-  // Desenhar vídeo no canvas
-  context.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
-
-  // Desenhar informações no canvas (com logo)
-  const overlayBounds = getOverlayCanvasBounds();
-  await drawInfoOnCanvas(context, canvas.width, canvas.height, overlayBounds);
-
-  addPhotoPreview(canvas.toDataURL('image/jpeg'), 'camera.jpg');
-};
-
-const drawInfoOnCanvas = async (context, canvasWidth, canvasHeight, overlayBounds) => {
-  const padding = 15;
-  const defaultWidth = 320;
-  const defaultHeight = 190;
-  const bounds = overlayBounds && overlayBounds.width && overlayBounds.height
-    ? overlayBounds
-    : {
-        x: canvasWidth - defaultWidth - padding,
-        y: padding,
-        width: defaultWidth,
-        height: defaultHeight,
-      };
-
-  const scale = Math.max(0.75, Math.min(bounds.width / 320, bounds.height / 190));
-  const basePadding = 8 * scale;
-
-  // Fundo do container
-  context.fillStyle = 'rgba(255, 255, 255, 0.88)';
-  context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-
-  // Borda
-  context.strokeStyle = '#cfe0c8';
-  context.lineWidth = Math.max(1, 2 * scale);
-  context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-
-  // Logo do ICMBio (canto superior direito)
-  const logoImg = await loadImage('/icmbio horizontal@1000x-8.png');
-  if (logoImg) {
-    const logoMaxHeight = 34 * scale;
-    const logoMaxWidth = Math.min(bounds.width * 0.55, 130 * scale);
-    const logoScale = Math.min(logoMaxWidth / logoImg.width, logoMaxHeight / logoImg.height, 1);
-    const logoWidth = logoImg.width * logoScale;
-    const logoHeight = logoImg.height * logoScale;
-    const logoX = bounds.x + bounds.width - logoWidth - basePadding;
-    const logoY = bounds.y + basePadding;
-    context.drawImage(logoImg, logoX, logoY, logoWidth, logoHeight);
-  }
-
-  // Caixa de informações (canto inferior esquerdo)
-  const infoPadding = 6 * scale;
-  const lineHeight = Math.round(14 * scale);
-  const infoBoxWidth = Math.min(bounds.width - basePadding * 2, Math.max(170 * scale, bounds.width * 0.62));
-  const infoBoxHeight = lineHeight * 4 + infoPadding * 2;
-  const infoBoxX = bounds.x + basePadding;
-  const infoBoxY = bounds.y + bounds.height - infoBoxHeight - basePadding;
-
-  context.fillStyle = 'rgba(248, 250, 243, 0.85)';
-  context.fillRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight);
-  context.strokeStyle = '#dbe7d5';
-  context.lineWidth = Math.max(1, 1.5 * scale);
-  context.strokeRect(infoBoxX, infoBoxY, infoBoxWidth, infoBoxHeight);
-
-  const labelFont = Math.round(11 * scale);
-  const valueFont = Math.round(10 * scale);
-  const labelWidth = Math.round(86 * scale);
-  const labelX = infoBoxX + infoPadding;
-  const valueX = labelX + labelWidth;
-  const maxValueWidth = infoBoxX + infoBoxWidth - infoPadding - valueX;
-
-  let textY = infoBoxY + infoPadding + lineHeight - Math.round(2 * scale);
-  const drawLine = (label, value) => {
-    context.font = `600 ${labelFont}px Arial`;
-    context.fillStyle = '#2a4a2a';
-    context.fillText(label, labelX, textY);
-    context.font = `normal ${valueFont}px Arial`;
-    context.fillStyle = '#1f2937';
-    context.fillText(trimTextToWidth(context, value, maxValueWidth), valueX, textY);
-    textY += lineHeight;
-  };
-
-  drawLine('Ocorrência:', occurrenceNumberInput.value || '-');
-  drawLine('Data/Hora:', `${dateInput.value || '-'} ${timeInput.value || '-'}`);
-  drawLine('Coordenadas:', locationInput.value || '-');
-  drawLine('Agente:', agentSelect.value || '-');
 };
 
 const sendWhatsAppMessage = () => {
@@ -1706,73 +1588,21 @@ addRecordBtn.addEventListener('click', () => {
 });
 generatePdfBtn.addEventListener('click', generatePDF);
 
-const startDraggingOverlay = (e) => {
-  isDraggingOverlay = true;
-  dragStart.x = e.clientX || e.touches[0].clientX;
-  dragStart.y = e.clientY || e.touches[0].clientY;
-  cameraOverlay.classList.add('dragging');
-};
-
-const moveDraggingOverlay = (e) => {
-  if (!isDraggingOverlay || !cameraOverlay) return;
-  
-  const currentX = e.clientX || e.touches[0].clientX;
-  const currentY = e.clientY || e.touches[0].clientY;
-  
-  const deltaX = currentX - dragStart.x;
-  const deltaY = currentY - dragStart.y;
-  
-  overlayPosition.x += deltaX;
-  overlayPosition.y += deltaY;
-  
-  dragStart.x = currentX;
-  dragStart.y = currentY;
-  
-  cameraOverlay.style.transform = `translate(${overlayPosition.x}px, ${overlayPosition.y}px)`;
-};
-
-const stopDraggingOverlay = () => {
-  isDraggingOverlay = false;
-  cameraOverlay.classList.remove('dragging');
-};
-
-const toggleCamera = async () => {
-  if (stream) {
-    stopCamera();
-    // Alternar modo de câmera
-    cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
-    toggleCameraBtn.textContent = cameraFacingMode === 'environment' ? 'Virar Câmera (Frontal)' : 'Virar Câmera (Traseira)';
-    setTimeout(() => startCamera(), 300);
-  }
-};
-
 uploadPhotoBtn.addEventListener('click', () => {
   // Mostrar opção para escolher entre câmera ou galeria
   const choice = confirm('Deseja usar a câmera?\n\nClique em "OK" para câmera ou "Cancelar" para escolher da galeria.');
   if (choice) {
-    // Abrir câmera
-    startCamera();
+    // Abrir câmera fullscreen
+    openFullscreenCamera();
   } else {
     // Abrir galeria
     photosInput.click();
   }
 });
 photosInput.addEventListener('change', handlePhotoUpload);
-capturePhotoBtn.addEventListener('click', capturePhoto);
-cancelCameraBtn.addEventListener('click', stopCamera);
-toggleCameraBtn.addEventListener('click', toggleCamera);
-
-// Event listeners para drag and drop da overlay
-if (cameraOverlay) {
-  cameraOverlay.addEventListener('mousedown', startDraggingOverlay);
-  cameraOverlay.addEventListener('touchstart', startDraggingOverlay);
-  
-  document.addEventListener('mousemove', moveDraggingOverlay);
-  document.addEventListener('touchmove', moveDraggingOverlay, { passive: false });
-  
-  document.addEventListener('mouseup', stopDraggingOverlay);
-  document.addEventListener('touchend', stopDraggingOverlay);
-}
+captureFullscreenBtn.addEventListener('click', captureFullscreenPhoto);
+cancelFullscreenCameraBtn.addEventListener('click', closeFullscreenCamera);
+toggleFrontCameraBtn.addEventListener('click', toggleCameraFacingMode);
 
 // Event listeners para modal de confirmação de exclusão
 if (cancelDeleteBtn) {
