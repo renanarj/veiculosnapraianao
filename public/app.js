@@ -16,6 +16,7 @@ const whatsappInput = document.getElementById('whatsapp');
 const whatsappBtn = document.getElementById('sendWhatsAppBtn');
 const addRecordBtn = document.getElementById('addRecordBtn');
 const generatePdfBtn = document.getElementById('generatePdfBtn');
+const generateFilteredPdfBtn = document.getElementById('generateFilteredPdfBtn');
 const recordsList = document.getElementById('records-list');
 const alertSuccess = document.getElementById('alertSuccess');
 const alertError = document.getElementById('alertError');
@@ -118,6 +119,13 @@ const formatDate = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
   return `${year}-${month}-${day}`;
+};
+
+const formatDateBr = (dateValue) => {
+  if (!dateValue) return '';
+  const [year, month, day] = dateValue.split('-');
+  if (!year || !month || !day) return dateValue;
+  return `${day}/${month}/${year}`;
 };
 
 const normalizeText = (text) =>
@@ -1207,7 +1215,8 @@ const addJustifiedText = (doc, text, yPos, marginLeft, contentWidth) => {
   return yPos;
 };
 
-const renderRecordToDoc = (doc, record) => {
+const renderRecordToDoc = (doc, record, options = {}) => {
+  const { includeComunicado = true, reportTitle = '' } = options;
   const marginLeft = 15;
   const marginRight = 15;
   const pageWidth = 210;
@@ -1237,17 +1246,29 @@ const renderRecordToDoc = (doc, record) => {
   doc.text('ÁREA DE PROTEÇÃO AMBIENTAL DELTA DO PARNAÍBA', 105, yPos, { align: 'center' });
   yPos += 15;
 
-  doc.setFontSize(12);
-  doc.text('COMUNICADO', 105, yPos + 5, { align: 'center' });
-  yPos += 15;
+  if (includeComunicado) {
+    doc.setFontSize(12);
+    doc.text('COMUNICADO', 105, yPos + 5, { align: 'center' });
+    yPos += 15;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  const comunicadoText =
-    'Prezado visitante, bem-vindo às praias de Luís Correia - PI. Você está dentro de uma das mais belas e importantes unidades de conservação federais brasileiras, a Área de Proteção Ambiental Delta do Parnaíba - APA Delta. Nesta praia, existem ninhos e filhotes de tartarugas marinhas de espécies ameaçadas de extinção, que vivem neste ambiente frágil, de vegetação de restinga e retenção de sedimentos que mantém as feições costeiras. Considerando a importância da biodiversidade nesta área, e da livre de circulação de pessoas, o Plano de Manejo da APA Delta do Parnaíba determinou, em seu artigo 12, a proibição da entrada, da permanência e da circulação de veículos automotores nas praias litorâneas. A desobediência deste dispositivo poderá implicar na aplicação do art. 90 do Decreto 6.514/2008, sujeitando o infrator à multa e apreensão do veículo. Neste sentido, contamos com sua colaboração para a preservação do meio ambiente e pela manutenção deste cenário de grande beleza cênica para as presentes e futuras gerações.';
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const comunicadoText =
+      'Prezado visitante, bem-vindo às praias de Luís Correia - PI. Você está dentro de uma das mais belas e importantes unidades de conservação federais brasileiras, a Área de Proteção Ambiental Delta do Parnaíba - APA Delta. Nesta praia, existem ninhos e filhotes de tartarugas marinhas de espécies ameaçadas de extinção, que vivem neste ambiente frágil, de vegetação de restinga e retenção de sedimentos que mantém as feições costeiras. Considerando a importância da biodiversidade nesta área, e da livre de circulação de pessoas, o Plano de Manejo da APA Delta do Parnaíba determinou, em seu artigo 12, a proibição da entrada, da permanência e da circulação de veículos automotores nas praias litorâneas. A desobediência deste dispositivo poderá implicar na aplicação do art. 90 do Decreto 6.514/2008, sujeitando o infrator à multa e apreensão do veículo. Neste sentido, contamos com sua colaboração para a preservação do meio ambiente e pela manutenção deste cenário de grande beleza cênica para as presentes e futuras gerações.';
 
-  yPos = addJustifiedText(doc, comunicadoText, yPos, marginLeft, contentWidth);
-  yPos += 10;
+    yPos = addJustifiedText(doc, comunicadoText, yPos, marginLeft, contentWidth);
+    yPos += 10;
+  } else if (reportTitle) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    const reportLines = doc.splitTextToSize(reportTitle, contentWidth);
+    reportLines.forEach((line) => {
+      doc.text(line, 105, yPos, { align: 'center' });
+      yPos += 6;
+    });
+    yPos += 6;
+  }
 
   doc.setDrawColor(0, 69, 33);
   doc.setLineWidth(0.5);
@@ -1503,9 +1524,52 @@ const sharePDF = async (index) => {
   }
 };
 
+const getFilteredRecords = () => applyFilters(allRecords);
+
+const getReportTitle = () => {
+  const months = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+
+  const dateFrom = filterDateFrom.value;
+  const dateTo = filterDateTo.value;
+  if (dateFrom || dateTo) {
+    const start = dateFrom ? formatDateBr(dateFrom) : '...';
+    const end = dateTo ? formatDateBr(dateTo) : '...';
+    return `Relatório do período de ${start} a ${end} da atividade de Veículos na Praia Não`;
+  }
+
+  if (filterMonth.value) {
+    const monthIndex = Number(filterMonth.value) - 1;
+    const monthLabel = months[monthIndex] || filterMonth.value;
+    if (filterYear.value) {
+      return `Relatório do mês de ${monthLabel} de ${filterYear.value} da atividade de Veículos na Praia Não`;
+    }
+    return `Relatório do mês de ${monthLabel} da atividade de Veículos na Praia Não`;
+  }
+
+  if (filterYear.value) {
+    return `Relatório do ano de ${filterYear.value} da atividade de Veículos na Praia Não`;
+  }
+
+  return 'Relatório da atividade de Veículos na Praia Não';
+};
+
 const generatePDF = async () => {
-  if (!allRecords.length) {
-    showAlert(alertError, 'Nenhum registro para gerar PDF.');
+  const filteredRecords = getFilteredRecords();
+  if (!filteredRecords.length) {
+    showAlert(alertError, 'Nenhum registro encontrado para gerar relatório.');
     return;
   }
   if (!jsPDF) {
@@ -1514,17 +1578,21 @@ const generatePDF = async () => {
   }
   try {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const reportTitle = getReportTitle();
     
     // Processa cada registro preparando as fotos
-    for (let index = 0; index < allRecords.length; index++) {
+    for (let index = 0; index < filteredRecords.length; index++) {
       if (index > 0) {
         doc.addPage();
       }
-      const preparedRecord = await prepareRecordPhotos(allRecords[index]);
-      renderRecordToDoc(doc, preparedRecord);
+      const preparedRecord = await prepareRecordPhotos(filteredRecords[index]);
+      renderRecordToDoc(doc, preparedRecord, {
+        includeComunicado: false,
+        reportTitle: index === 0 ? reportTitle : '',
+      });
     }
     
-    doc.save('Relatorio_Comunicados.pdf');
+    doc.save('Relatorio_Filtrado.pdf');
   } catch (error) {
     showAlert(alertError, 'Erro ao gerar relatório PDF.');
     console.error('Erro ao gerar PDF:', error);
@@ -1587,6 +1655,9 @@ addRecordBtn.addEventListener('click', () => {
   addRecord();
 });
 generatePdfBtn.addEventListener('click', generatePDF);
+if (generateFilteredPdfBtn) {
+  generateFilteredPdfBtn.addEventListener('click', generatePDF);
+}
 
 uploadPhotoBtn.addEventListener('click', () => {
   // Mostrar opção para escolher entre câmera ou galeria
