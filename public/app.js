@@ -1223,6 +1223,8 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   const contentWidth = pageWidth - marginLeft - marginRight;
   let yPos = 15;
 
+  doc.setTextColor(0, 0, 0);
+
   // Adicionar brasão da república centralizado
   try {
     const brasaoWidth = 18;
@@ -1237,7 +1239,6 @@ const renderRecordToDoc = (doc, record, options = {}) => {
 
   // Texto do cabeçalho centralizado
   doc.setFontSize(10);
-  doc.setTextColor(0, 69, 33);
   doc.setFont('helvetica', 'bold');
   doc.text('MINISTÉRIO DO MEIO AMBIENTE E MUDANÇA DO CLIMA', 105, yPos, { align: 'center' });
   yPos += 5;
@@ -1261,7 +1262,6 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   } else if (reportTitle) {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
     const reportLines = doc.splitTextToSize(reportTitle, contentWidth);
     reportLines.forEach((line) => {
       doc.text(line, 105, yPos, { align: 'center' });
@@ -1350,7 +1350,6 @@ const renderRecordToDoc = (doc, record, options = {}) => {
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 69, 33);
     doc.text('REGISTRO FOTOGRÁFICO', marginLeft, yPos);
     yPos += 10;
 
@@ -1428,7 +1427,7 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   }
 
   doc.setFontSize(8);
-  doc.setTextColor(100);
+  doc.setTextColor(0, 0, 0);
   doc.text(
     'Documento gerado automaticamente pelo Sistema de Fiscalização da APA Delta do Parnaíba',
     105,
@@ -1544,26 +1543,32 @@ const getReportTitle = () => {
 
   const dateFrom = filterDateFrom.value;
   const dateTo = filterDateTo.value;
+  const selectedAgent = filterAgent.value;
+
+  const titleParts = [];
+
   if (dateFrom || dateTo) {
     const start = dateFrom ? formatDateBr(dateFrom) : '...';
     const end = dateTo ? formatDateBr(dateTo) : '...';
-    return `Relatório do período de ${start} a ${end} da atividade de Veículos na Praia Não`;
-  }
-
-  if (filterMonth.value) {
+    titleParts.push(`Relatório do período de ${start} a ${end}`);
+  } else if (filterMonth.value) {
     const monthIndex = Number(filterMonth.value) - 1;
     const monthLabel = months[monthIndex] || filterMonth.value;
-    if (filterYear.value) {
-      return `Relatório do mês de ${monthLabel} de ${filterYear.value} da atividade de Veículos na Praia Não`;
-    }
-    return `Relatório do mês de ${monthLabel} da atividade de Veículos na Praia Não`;
+    const yearLabel = filterYear.value || String(new Date().getFullYear());
+    titleParts.push(`Relatório do mês de ${monthLabel} de ${yearLabel}`);
+  } else if (filterYear.value) {
+    titleParts.push(`Relatório do ano de ${filterYear.value}`);
+  } else {
+    titleParts.push('Relatório');
   }
 
-  if (filterYear.value) {
-    return `Relatório do ano de ${filterYear.value} da atividade de Veículos na Praia Não`;
+  if (selectedAgent) {
+    titleParts.push(`registradas pelo agente ${selectedAgent}`);
   }
 
-  return 'Relatório da atividade de Veículos na Praia Não';
+  titleParts.push('na atividade de Veículos na Praia Não');
+
+  return titleParts.join(' ');
 };
 
 const generatePDF = async () => {
