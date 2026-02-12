@@ -131,6 +131,14 @@ const formatDateBr = (dateValue) => {
   return `${day}/${month}/${year}`;
 };
 
+const withTimeout = (promise, timeoutMs, timeoutMessage) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(timeoutMessage || 'Tempo limite excedido.')), timeoutMs)
+    ),
+  ]);
+
 const normalizeText = (text) =>
   (text || '')
     .normalize('NFD')
@@ -425,11 +433,23 @@ const uploadRecordAssets = async (recordData, recordId) => {
   for (let index = 0; index < recordData.photos.length; index++) {
     const photo = recordData.photos[index];
     if (!photo?.data || !photo.data.startsWith('data:image')) continue;
-    const safeName = (photo.name || `foto_${index + 1}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${safeName}`);
-    await storageRef.putString(photo.data, 'data_url');
-    const downloadUrl = await storageRef.getDownloadURL();
-    uploadedUrls.push(downloadUrl);
+    try {
+      const safeName = (photo.name || `foto_${index + 1}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${safeName}`);
+      await withTimeout(
+        storageRef.putString(photo.data, 'data_url'),
+        15000,
+        `Timeout no upload da foto ${index + 1}.`
+      );
+      const downloadUrl = await withTimeout(
+        storageRef.getDownloadURL(),
+        10000,
+        `Timeout ao obter URL da foto ${index + 1}.`
+      );
+      uploadedUrls.push(downloadUrl);
+    } catch (error) {
+      // Se uma foto falhar, segue com as demais sem bloquear o salvamento
+    }
   }
 
   const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
@@ -668,11 +688,28 @@ const addPhotoPreview = (dataUrl, fileName) => {
 const handlePhotoUpload = (event) => {
   const files = event.target.files;
   if (!files || files.length === 0) return;
+  const unsupportedFiles = [];
+
   Array.from(files).forEach((file) => {
+    const mimeType = (file.type || '').toLowerCase();
+    const fileName = file.name || 'arquivo';
+    const isHeic = mimeType.includes('heic') || mimeType.includes('heif') || /\.(heic|heif)$/i.test(fileName);
+    if (isHeic) {
+      unsupportedFiles.push(fileName);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => addPhotoPreview(e.target.result, file.name);
     reader.readAsDataURL(file);
   });
+
+  if (unsupportedFiles.length) {
+    showAlert(
+      alertError,
+      `Formato não suportado: ${unsupportedFiles.join(', ')}. Use JPG, PNG ou WEBP.`
+    );
+  }
+
   event.target.value = '';
 };
 
@@ -1220,20 +1257,21 @@ const addRecord = async () => {
     } else {
       allRecords.push(recordData);
     }
+  } finally {
+    setSavingState(false);
   }
 
   sendToGoogleSheets(recordData);
-  setSavingState(false);
   updateRecordsList();
   persistLocalIfNeeded();
   populateMonthYearFilters();
   clearFormAfterRecord();
-  
+
   // Scroll para o topo do formulário
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  
+
   // Mostrar notificação de sucesso
-  showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
+  showAlert(alertSuccess, 'Registro salvo com sucesso!');
 };
 
 const editRecord = (index) => {
