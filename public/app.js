@@ -13,6 +13,8 @@ const locationLoading = document.getElementById('locationLoading');
 const locationBtnText = document.getElementById('locationBtnText');
 const cpfInput = document.getElementById('infractorDoc');
 const whatsappInput = document.getElementById('whatsapp');
+const vehiclePlateInput = document.getElementById('vehiclePlate');
+const vehicleNoPlateInput = document.getElementById('vehicleNoPlate');
 const whatsappBtn = document.getElementById('sendWhatsAppBtn');
 const addRecordBtn = document.getElementById('addRecordBtn');
 const generatePdfBtn = document.getElementById('generatePdfBtn');
@@ -89,6 +91,7 @@ let pendingDeleteIndex = -1;
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
+const noPlateLabel = 'VEÍCULO SEM PLACA';
 
 const scriptUrl = 'https://script.google.com/macros/s/AKfycbx_t9Q0A9TqcPp3cBx6EYVGlUXw-sXBBwTOHxfPuJHhi1xXL-N03aO057H9BsEaoPIOow/exec';
 const firebaseConfig = {
@@ -104,7 +107,7 @@ const storageKey = 'fiscalRecords';
 const sessionKey = 'loggedAgent';
 const migrationKey = 'recordsMigratedToFirestore';
 let db = null;
-// let storage = null; // Storage desabilitado - usando apenas salvamento local
+let storage = null;
 
 document.addEventListener(
   'dblclick',
@@ -135,6 +138,24 @@ const normalizeText = (text) =>
     .toLowerCase()
     .trim();
 
+const normalizedNoPlateLabel = normalizeText(noPlateLabel);
+
+const isNoPlateValue = (value) => normalizeText(value) === normalizedNoPlateLabel;
+
+const syncVehiclePlateState = () => {
+  if (!vehiclePlateInput || !vehicleNoPlateInput) return;
+  const isNoPlate = vehicleNoPlateInput.checked;
+  if (isNoPlate) {
+    vehiclePlateInput.value = noPlateLabel;
+    vehiclePlateInput.readOnly = true;
+  } else {
+    vehiclePlateInput.readOnly = false;
+    if (isNoPlateValue(vehiclePlateInput.value)) {
+      vehiclePlateInput.value = '';
+    }
+  }
+};
+
 const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
 
 const canManageRecord = (record) => {
@@ -164,7 +185,7 @@ const initFirebase = () => {
     firebase.initializeApp(firebaseConfig);
   }
   db = firebase.firestore();
-  // Storage desabilitado - usando apenas salvamento local de fotos
+  storage = firebase.storage();
 };
 
 const formatTime = (date) => {
@@ -369,7 +390,8 @@ const persistLocalIfNeeded = () => {
 const buildRecordPayload = (recordData, isNew) => {
   const payload = { ...recordData };
   delete payload.photos;
-  payload.photosCount = recordData.photos?.length || 0;
+  const photoUrlsCount = recordData.photoUrls?.length || 0;
+  payload.photosCount = photoUrlsCount || recordData.photos?.length || 0;
   payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
   if (isNew) {
     payload.timestamp = firebase.firestore.FieldValue.serverTimestamp();
@@ -377,9 +399,55 @@ const buildRecordPayload = (recordData, isNew) => {
   return payload;
 };
 
+const extractPhotoUrls = (photos = []) => {
+  const urls = [];
+  photos.forEach((photo) => {
+    if (typeof photo === 'string' && photo.startsWith('http')) {
+      urls.push(photo);
+      return;
+    }
+    if (photo?.url && photo.url.startsWith('http')) {
+      urls.push(photo.url);
+    }
+  });
+  return urls;
+};
+
 const uploadRecordAssets = async (recordData, recordId) => {
-  // Firebase Storage desabilitado - usando apenas salvamento local e planilha
-  return { pdfUrl: '', photoUrls: [] };
+  const existingUrls = extractPhotoUrls(recordData.photos);
+  if (!storage || !recordData.photos || recordData.photos.length === 0) {
+    return { pdfUrl: '', photoUrls: existingUrls };
+  }
+
+  const uploadedUrls = [];
+  const basePath = `records/${recordId}`;
+
+  for (let index = 0; index < recordData.photos.length; index++) {
+    const photo = recordData.photos[index];
+    if (!photo?.data || !photo.data.startsWith('data:image')) continue;
+    const safeName = (photo.name || `foto_${index + 1}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${safeName}`);
+    await storageRef.putString(photo.data, 'data_url');
+    const downloadUrl = await storageRef.getDownloadURL();
+    uploadedUrls.push(downloadUrl);
+  }
+
+  const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
+  return { pdfUrl: '', photoUrls: mergedUrls };
+};
+
+const fetchImageAsDataUrl = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Falha ao baixar imagem');
+  }
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
 const setCurrentTime = () => {
@@ -565,6 +633,7 @@ const toggleCameraFacingMode = () => {
 };
 
 const addPhotoPreview = (dataUrl, fileName) => {
+  const isDataImage = dataUrl.startsWith('data:image');
   const photoId = `photo-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const wrapper = document.createElement('div');
   wrapper.className = 'photo-preview';
@@ -590,7 +659,8 @@ const addPhotoPreview = (dataUrl, fileName) => {
 
   photosData.push({
     id: photoId,
-    data: dataUrl,
+    data: isDataImage ? dataUrl : '',
+    url: isDataImage ? '' : dataUrl,
     name: fileName || 'foto_veiculo.jpg',
   });
 };
@@ -636,6 +706,7 @@ const sendToGoogleSheets = (recordData) => {
     observations: recordData.observations || '',
     timestamp: new Date().toISOString(),
     photos: recordData.photos || [], // Adiciona as fotos!
+    photoUrls: recordData.photoUrls || [],
   };
 
   // Enviar de forma assíncrona, sem bloquear
@@ -909,7 +980,17 @@ const updateDashboard = () => {
 
   const uniqueDrivers = new Set(filtered.map((record) => getDriverKey(record)));
   const uniqueVehicles = new Set(
-    filtered.map((record) => normalizeText(record.vehiclePlate)).filter(Boolean)
+    filtered
+      .map((record, index) => {
+        const plateValue = normalizeText(record.vehiclePlate);
+        if (!plateValue) return '';
+        if (plateValue === normalizedNoPlateLabel) {
+          const uniqueId = record.occurrenceNumber || record.id || index;
+          return `sem-placa:${uniqueId}`;
+        }
+        return plateValue;
+      })
+      .filter(Boolean)
   );
   const duplicatesCount = Object.values(duplicateMap).filter((count) => count > 1).length;
   const currentMonthCount = filtered.filter((record) => (record.date || '').slice(5, 7) === currentMonth)
@@ -964,6 +1045,10 @@ const clearFormAfterRecord = () => {
   photoPreviewContainer.innerHTML = '';
   photosData = [];
   locationError.textContent = '';
+  if (vehicleNoPlateInput) {
+    vehicleNoPlateInput.checked = false;
+  }
+  syncVehiclePlateState();
   dateInput.value = formatDate(new Date());
   setCurrentTime();
   occurrenceNumberInput.value = generateUniqueOccurrenceNumber();
@@ -980,10 +1065,15 @@ const clearForm = () => {
   photoPreviewContainer.innerHTML = '';
   photosData = [];
   locationError.textContent = '';
+  if (vehicleNoPlateInput) {
+    vehicleNoPlateInput.checked = false;
+  }
+  syncVehiclePlateState();
   updateAgentName();
 };
 
 const validateRequiredFields = () => {
+  syncVehiclePlateState();
   const requiredFields = [
     { id: 'occurrenceNumber', name: 'Número da Ocorrência' },
     { id: 'agent', name: 'Nome do Agente' },
@@ -1012,7 +1102,8 @@ const validateRequiredFields = () => {
   });
 
   const plate = document.getElementById('vehiclePlate').value.trim();
-  if (plate.length !== 7) {
+  const noPlateSelected = vehicleNoPlateInput?.checked || isNoPlateValue(plate);
+  if (!noPlateSelected && plate.length !== 7) {
     document.getElementById('vehiclePlate').classList.add('invalid-field');
     missingFields.push('Placa com 7 caracteres');
     isValid = false;
@@ -1035,6 +1126,10 @@ const addRecord = async () => {
   formData.forEach((value, key) => {
     recordData[key] = value;
   });
+
+  if (vehicleNoPlateInput?.checked || isNoPlateValue(recordData.vehiclePlate)) {
+    recordData.vehiclePlate = noPlateLabel;
+  }
   
   // COPIA AS FOTOS
   recordData.photos = [...photosData];
@@ -1062,6 +1157,24 @@ const addRecord = async () => {
       } else if (recordId) {
         recordData.id = recordId;
       }
+      if (db && recordData.id) {
+        try {
+          const assets = await uploadRecordAssets(recordData, recordData.id);
+          if (assets.photoUrls && assets.photoUrls.length) {
+            recordData.photoUrls = assets.photoUrls;
+            await db.collection('records').doc(recordData.id).set(
+              {
+                photoUrls: assets.photoUrls,
+                photosCount: assets.photoUrls.length,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        } catch (assetError) {
+          // Upload de fotos falhou, segue com o registro salvo
+        }
+      }
       allRecords[currentlyEditingIndex] = recordData;
       currentlyEditingIndex = -1;
       addRecordBtn.textContent = 'Adicionar Registro';
@@ -1076,6 +1189,24 @@ const addRecord = async () => {
           recordData.id = docRef.id;
         } catch (fbError) {
           // Firebase falhou, continua com salvamento local
+        }
+      }
+      if (db && recordData.id) {
+        try {
+          const assets = await uploadRecordAssets(recordData, recordData.id);
+          if (assets.photoUrls && assets.photoUrls.length) {
+            recordData.photoUrls = assets.photoUrls;
+            await db.collection('records').doc(recordData.id).set(
+              {
+                photoUrls: assets.photoUrls,
+                photosCount: assets.photoUrls.length,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        } catch (assetError) {
+          // Upload de fotos falhou, segue com o registro salvo
         }
       }
       allRecords.push(recordData);
@@ -1123,6 +1254,10 @@ const editRecord = (index) => {
   document.getElementById('infractorDoc').value = record.infractorDoc || '';
   document.getElementById('whatsapp').value = record.whatsapp || '';
   document.getElementById('vehiclePlate').value = record.vehiclePlate || '';
+  if (vehicleNoPlateInput) {
+    vehicleNoPlateInput.checked = isNoPlateValue(record.vehiclePlate);
+  }
+  syncVehiclePlateState();
   document.getElementById('vehicleModel').value = record.vehicleModel || '';
   document.getElementById('vehicleColor').value = record.vehicleColor || '';
   document.getElementById('vehicleYear').value = record.vehicleYear || '';
@@ -1134,6 +1269,11 @@ const editRecord = (index) => {
   photosData = [];
   if (record.photos && record.photos.length) {
     record.photos.forEach((photo) => addPhotoPreview(photo.data, photo.name));
+  }
+  if (record.photoUrls && record.photoUrls.length) {
+    record.photoUrls.forEach((url, index) => {
+      addPhotoPreview(url, `foto_online_${index + 1}.jpg`);
+    });
   }
 
   currentlyEditingIndex = index;
@@ -1308,7 +1448,14 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   doc.text('DADOS DO VEÍCULO', marginLeft, yPos);
   yPos += 6;
   doc.setFont('helvetica', 'normal');
-  doc.text(`Placa: ${record.vehiclePlate}`, marginLeft, yPos);
+  const vehiclePlateText = record.vehiclePlate || '--';
+  if (isNoPlateValue(vehiclePlateText)) {
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Placa: ${vehiclePlateText}`, marginLeft, yPos);
+    doc.setFont('helvetica', 'normal');
+  } else {
+    doc.text(`Placa: ${vehiclePlateText}`, marginLeft, yPos);
+  }
   doc.text(`Modelo: ${record.vehicleModel}`, 80, yPos);
   doc.text(`Cor: ${record.vehicleColor}`, 130, yPos);
   if (record.vehicleYear) {
@@ -1438,28 +1585,40 @@ const renderRecordToDoc = (doc, record, options = {}) => {
 
 // Função para preparar fotos do registro (separa base64 de URLs externas)
 const prepareRecordPhotos = async (record) => {
-  if (!record.photos || !record.photos.length) return record;
-  
   const preparedPhotos = [];
   const externalLinks = [];
-  
-  for (const photo of record.photos) {
-    try {
-      // Se a foto já tem dados base64, usa direto
-      if (photo.data && photo.data.startsWith('data:image')) {
-        preparedPhotos.push(photo);
-      } 
-      // Se é um link do Google Drive ou URL externa
-      else if (photo.url || (typeof photo === 'string' && photo.startsWith('http'))) {
-        const url = photo.url || photo;
-        // Adiciona o link para a lista de links externos
-        externalLinks.push(url);
+  const urlCandidates = [];
+
+  if (record.photoUrls && record.photoUrls.length) {
+    urlCandidates.push(...record.photoUrls);
+  }
+
+  if (record.photos && record.photos.length) {
+    for (const photo of record.photos) {
+      try {
+        if (photo?.data && photo.data.startsWith('data:image')) {
+          preparedPhotos.push(photo);
+        } else if (photo?.url && photo.url.startsWith('http')) {
+          urlCandidates.push(photo.url);
+        } else if (typeof photo === 'string' && photo.startsWith('http')) {
+          urlCandidates.push(photo);
+        }
+      } catch (error) {
+        console.log('Erro ao processar foto:', error);
       }
-    } catch (error) {
-      console.log('Erro ao processar foto:', error);
     }
   }
-  
+
+  const uniqueUrls = Array.from(new Set(urlCandidates));
+  for (const url of uniqueUrls) {
+    try {
+      const dataUrl = await fetchImageAsDataUrl(url);
+      preparedPhotos.push({ data: dataUrl, name: 'foto_online.jpg' });
+    } catch (error) {
+      externalLinks.push(url);
+    }
+  }
+
   return { ...record, photos: preparedPhotos, externalPhotoLinks: externalLinks };
 };
 
@@ -1645,6 +1804,9 @@ window.addEventListener('load', () => {
 agentSelect.addEventListener('change', updateAgentName);
 setTimeBtn.addEventListener('click', setCurrentTime);
 locationBtn.addEventListener('click', getCurrentLocation);
+if (vehicleNoPlateInput) {
+  vehicleNoPlateInput.addEventListener('change', syncVehiclePlateState);
+}
 cpfInput.addEventListener('input', (event) => {
   event.target.value = formatCPF(event.target.value);
 });
