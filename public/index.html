@@ -292,20 +292,25 @@
 
         <div class="section-title">Dados do Veículo</div>
 
-        <div class="form-group">
-          <label for="vehiclePlate" class="required">Placa do Veículo</label>
-          <input
-            type="text"
-            id="vehiclePlate"
-            name="vehiclePlate"
-            placeholder="AAA0A00"
-            maxlength="7"
-            required
-          />
-          <label class="checkbox-line">
-            <input type="checkbox" id="vehicleNoPlate" name="vehicleNoPlate" />
-            Veículo sem placa
-          </label>
+        <div class="two-columns">
+          <div class="form-group">
+            <label for="vehiclePlate" class="required">Placa do Veículo</label>
+            <input
+              type="text"
+              id="vehiclePlate"
+              name="vehiclePlate"
+              placeholder="AAA0A00"
+              maxlength="7"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-card" for="vehicleNoPlate">
+              <input type="checkbox" id="vehicleNoPlate" name="vehicleNoPlate" />
+              <span class="checkbox-card-text">Veículo sem placa</span>
+            </label>
+          </div>
         </div>
 
         <div class="two-columns">
