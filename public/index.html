@@ -33,10 +33,26 @@
         </div>
         <form id="loginForm" class="auth-form" onsubmit="return false;">
           <div class="form-group">
-            <label for="loginAgent" class="required">Nome do Agente</label>
+            <label for="loginInstitution" class="required">Instituição</label>
+            <select id="loginInstitution" required>
+              <option value="">Selecione a instituição</option>
+              <option value="icmbio">Instituto Chico Mendes - ICMBio</option>
+              <option value="semarh">Secretaria de Meio Ambiente do Estado do Piauí - SEMARH</option>
+              <option value="pmpi">Batalhão de Polícia Ambiental - PMPI</option>
+              <option value="prefeitura">Prefeitura Municipal de Luís Correia</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="loginAgent" id="loginAgentLabel" class="required">Nome do Agente</label>
             <select id="loginAgent" required>
               <option value="">Selecione um agente</option>
             </select>
+            <input
+              type="text"
+              id="loginAgentCustom"
+              placeholder="Digite o nome do agente"
+              class="hidden"
+            />
           </div>
           <div class="form-group">
             <label for="loginPassword" class="required">Senha</label>
@@ -45,7 +61,7 @@
           <button type="submit" id="loginBtn">Entrar</button>
           <div id="loginError" class="alert-error"></div>
         </form>
-        <div class="auth-hint">Senha padrão: primeiro nome + 2026 (ex: renan2026). Perfil CONTINGÊNCIA: contingencia2026.</div>
+        <div class="auth-hint">ICMBio: primeiro nome + 2026 (ex: renan2026). Demais instituições: senha do perfil (ex: semarh2026).</div>
       </div>
     </div>
 
@@ -176,6 +192,7 @@
             <h1>Formulário de Fiscalização</h1>
           </div>
 
+          <div class="agent-name">Instituição: <span id="institutionDisplay">[Instituição]</span></div>
           <div class="agent-name">Agente: <span id="agentDisplay">[Nome do Agente]</span></div>
 
           <div class="form-container">
@@ -191,20 +208,25 @@
               </div>
 
               <div class="form-group">
+                <label for="institution" class="required">Instituição</label>
+                <input type="text" id="institution" name="institution" readonly required />
+              </div>
+
+              <div class="form-group">
                 <label for="agent" class="required">Nome do Agente</label>
-                <select id="agent" name="agent" required>
-                  <option value="">Selecione um agente</option>
-                  <option value="ADRIANO RICARDO DAMATO ROCHA DE SOUZA">ADRIANO RICARDO DAMATO ROCHA DE SOUZA</option>
-                  <option value="ANTONIO ALVES PEREIRA FILHO">ANTONIO ALVES PEREIRA FILHO</option>
-                  <option value="ARTHUR TALVARA DOS SANTOS NASCIMENTO">ARTHUR TALVARA DOS SANTOS NASCIMENTO</option>
-                  <option value="JANNAYRA FERREIRA SANTOS">JANNAYRA FERREIRA SANTOS</option>
-                  <option value="JOAO CARLOS CARVALHO AIRES">JOAO CARLOS CARVALHO AIRES</option>
-                  <option value="JOÃO EDUARDO DOS SANTOS GALDINO">JOÃO EDUARDO DOS SANTOS GALDINO</option>
-                  <option value="LUIS CLAUDIONOR SILVA MOURA">LUIS CLAUDIONOR SILVA MOURA</option>
-                  <option value="MARCOS MACIEL FERREIRA DA SILVA">MARCOS MACIEL FERREIRA DA SILVA</option>
-                  <option value="RENAN ARAUJO E SILVA">RENAN ARAUJO E SILVA</option>
-                  <option value="CONTINGÊNCIA">CONTINGÊNCIA</option>
-                </select>
+                <input type="text" id="agent" name="agent" list="agentSuggestions" required />
+                <datalist id="agentSuggestions">
+                  <option value="ADRIANO RICARDO DAMATO ROCHA DE SOUZA"></option>
+                  <option value="ANTONIO ALVES PEREIRA FILHO"></option>
+                  <option value="ARTHUR TALVARA DOS SANTOS NASCIMENTO"></option>
+                  <option value="JANNAYRA FERREIRA SANTOS"></option>
+                  <option value="JOAO CARLOS CARVALHO AIRES"></option>
+                  <option value="JOÃO EDUARDO DOS SANTOS GALDINO"></option>
+                  <option value="LUIS CLAUDIONOR SILVA MOURA"></option>
+                  <option value="MARCOS MACIEL FERREIRA DA SILVA"></option>
+                  <option value="RENAN ARAUJO E SILVA"></option>
+                  <option value="CONTINGÊNCIA"></option>
+                </datalist>
               </div>
 
         <div class="form-group">

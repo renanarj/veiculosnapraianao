@@ -33,11 +33,16 @@ const toggleFrontCameraBtn = document.getElementById('toggleFrontCameraBtn');
 const loginScreen = document.getElementById('loginScreen');
 const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
+const loginInstitution = document.getElementById('loginInstitution');
 const loginAgent = document.getElementById('loginAgent');
+const loginAgentCustom = document.getElementById('loginAgentCustom');
+const loginAgentLabel = document.getElementById('loginAgentLabel');
 const loginPassword = document.getElementById('loginPassword');
 const loginError = document.getElementById('loginError');
 const loginBtn = document.getElementById('loginBtn');
 const currentAgent = document.getElementById('currentAgent');
+const institutionInput = document.getElementById('institution');
+const institutionDisplay = document.getElementById('institutionDisplay');
 const logoutBtn = document.getElementById('logoutBtn');
 const views = document.querySelectorAll('.view');
 const openFormBtn = document.getElementById('openFormBtn');
@@ -92,6 +97,29 @@ let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' par
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
+const institutions = {
+  icmbio: 'Instituto Chico Mendes - ICMBio',
+  semarh: 'Secretaria de Meio Ambiente do Estado do Piauí - SEMARH',
+  pmpi: 'Batalhão de Polícia Ambiental - PMPI',
+  prefeitura: 'Prefeitura Municipal de Luís Correia',
+};
+const institutionPasswords = {
+  semarh: 'semarh2026',
+  pmpi: 'pmpi2026',
+  prefeitura: 'prefeitura2026',
+};
+const icmbioAgents = [
+  'ADRIANO RICARDO DAMATO ROCHA DE SOUZA',
+  'ANTONIO ALVES PEREIRA FILHO',
+  'ARTHUR TALVARA DOS SANTOS NASCIMENTO',
+  'JANNAYRA FERREIRA SANTOS',
+  'JOAO CARLOS CARVALHO AIRES',
+  'JOÃO EDUARDO DOS SANTOS GALDINO',
+  'LUIS CLAUDIONOR SILVA MOURA',
+  'MARCOS MACIEL FERREIRA DA SILVA',
+  'RENAN ARAUJO E SILVA',
+  'CONTINGÊNCIA',
+];
 
 const scriptUrl = 'https://script.google.com/macros/s/AKfycbx_t9Q0A9TqcPp3cBx6EYVGlUXw-sXBBwTOHxfPuJHhi1xXL-N03aO057H9BsEaoPIOow/exec';
 const firebaseConfig = {
@@ -105,6 +133,7 @@ const firebaseConfig = {
 
 const storageKey = 'fiscalRecords';
 const sessionKey = 'loggedAgent';
+const sessionInstitutionKey = 'loggedInstitution';
 const migrationKey = 'recordsMigratedToFirestore';
 let db = null;
 let storage = null;
@@ -165,6 +194,24 @@ const syncVehiclePlateState = () => {
 };
 
 const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
+const getLoggedInstitutionKey = () => localStorage.getItem(sessionInstitutionKey) || '';
+
+const getInstitutionLabel = (institutionKey) => institutions[institutionKey] || '';
+
+const getCurrentLoginAgent = () => {
+  const selectedInstitution = loginInstitution?.value || '';
+  if (selectedInstitution === 'icmbio') {
+    return (loginAgent?.value || '').trim();
+  }
+  return (loginAgentCustom?.value || '').trim().toUpperCase();
+};
+
+const getExpectedPassword = (institutionKey, agentName) => {
+  if (institutionKey === 'icmbio') {
+    return getAgentPassword(agentName);
+  }
+  return institutionPasswords[institutionKey] || '';
+};
 
 const canManageRecord = (record) => {
   const logged = normalizeText(getLoggedAgentName());
@@ -220,23 +267,47 @@ const setSavingState = (isSaving) => {
   savingOverlay.classList.toggle('hidden', !isSaving);
 };
 
-const populateAgentSelects = () => {
-  if (!loginAgent || !filterAgent) return;
-  loginAgent.innerHTML = '<option value="">Selecione um agente</option>';
-  filterAgent.innerHTML = '<option value="">Todos</option>';
-  Array.from(agentSelect.options)
-    .filter((option) => option.value)
-    .forEach((option) => {
-      const loginOption = document.createElement('option');
-      loginOption.value = option.value;
-      loginOption.textContent = option.textContent;
-      loginAgent.appendChild(loginOption);
+const updateLoginAgentMode = () => {
+  if (!loginInstitution || !loginAgent || !loginAgentCustom || !loginAgentLabel) return;
+  const selectedInstitution = loginInstitution.value;
+  const isIcmbio = selectedInstitution === 'icmbio';
 
-      const filterOption = document.createElement('option');
-      filterOption.value = option.value;
-      filterOption.textContent = option.textContent;
-      filterAgent.appendChild(filterOption);
-    });
+  loginAgent.classList.toggle('hidden', !isIcmbio);
+  loginAgentCustom.classList.toggle('hidden', isIcmbio);
+  loginAgent.required = isIcmbio;
+  loginAgentCustom.required = Boolean(selectedInstitution) && !isIcmbio;
+  loginAgentLabel.textContent = isIcmbio ? 'Nome do Agente' : 'Responsável';
+
+  if (isIcmbio) {
+    loginAgentCustom.value = '';
+  } else {
+    loginAgent.value = '';
+  }
+};
+
+const populateLoginAgents = () => {
+  if (!loginAgent) return;
+  loginAgent.innerHTML = '<option value="">Selecione um agente</option>';
+  icmbioAgents.forEach((agentName) => {
+    const loginOption = document.createElement('option');
+    loginOption.value = agentName;
+    loginOption.textContent = agentName;
+    loginAgent.appendChild(loginOption);
+  });
+};
+
+const populateFilterAgents = () => {
+  if (!filterAgent) return;
+  filterAgent.innerHTML = '<option value="">Todos</option>';
+  const agents = Array.from(
+    new Set(allRecords.map((record) => (record.agent || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  agents.forEach((agentName) => {
+    const option = document.createElement('option');
+    option.value = agentName;
+    option.textContent = agentName;
+    filterAgent.appendChild(option);
+  });
 };
 
 const populateMonthYearFilters = () => {
@@ -283,24 +354,35 @@ const populateMonthYearFilters = () => {
   if (selectedYear) filterYear.value = selectedYear;
 };
 
-const setLoggedAgent = (agentName) => {
+const setLoggedUser = (agentName, institutionKey) => {
   localStorage.setItem(sessionKey, agentName);
+  localStorage.setItem(sessionInstitutionKey, institutionKey);
   loginScreen.classList.add('hidden');
   appShell.classList.remove('hidden');
-  currentAgent.textContent = `Agente: ${agentName}`;
+  const institutionLabel = getInstitutionLabel(institutionKey);
+  currentAgent.textContent = `${institutionLabel} • Agente: ${agentName}`;
+  if (institutionInput) institutionInput.value = institutionLabel;
+  if (institutionDisplay) institutionDisplay.textContent = institutionLabel || '[Instituição]';
   agentSelect.value = agentName;
-  agentSelect.disabled = true;
+  agentSelect.readOnly = true;
   updateAgentName();
 };
 
 const clearSession = () => {
   localStorage.removeItem(sessionKey);
+  localStorage.removeItem(sessionInstitutionKey);
   loginScreen.classList.remove('hidden');
   appShell.classList.add('hidden');
   loginPassword.value = '';
+  loginInstitution.value = '';
   loginAgent.value = '';
+  if (loginAgentCustom) loginAgentCustom.value = '';
+  if (institutionInput) institutionInput.value = '';
+  if (institutionDisplay) institutionDisplay.textContent = '[Instituição]';
+  currentAgent.textContent = 'Agente: --';
   agentSelect.value = '';
-  agentSelect.disabled = false;
+  agentSelect.readOnly = false;
+  updateLoginAgentMode();
   updateAgentName();
 };
 
@@ -315,19 +397,24 @@ const showView = (viewId) => {
 };
 
 const handleLogin = () => {
-  const selectedAgent = loginAgent.value;
+  const selectedInstitution = loginInstitution.value;
+  const selectedAgent = getCurrentLoginAgent();
   const password = loginPassword.value.trim();
   loginError.style.display = 'none';
-  if (!selectedAgent || !password) {
-    showAlert(loginError, 'Selecione o agente e digite a senha.');
+  if (!selectedInstitution || !selectedAgent || !password) {
+    showAlert(loginError, 'Selecione a instituição, informe o agente e digite a senha.');
     return false;
   }
-  const expectedPassword = getAgentPassword(selectedAgent);
+  const expectedPassword = getExpectedPassword(selectedInstitution, selectedAgent);
   if (password !== expectedPassword) {
-    showAlert(loginError, 'Senha incorreta. Use o padrão primeiro nome + 2026.');
+    if (selectedInstitution === 'icmbio') {
+      showAlert(loginError, 'Senha incorreta. Use o padrão primeiro nome + 2026.');
+    } else {
+      showAlert(loginError, 'Senha incorreta para a instituição selecionada.');
+    }
     return false;
   }
-  setLoggedAgent(selectedAgent);
+  setLoggedUser(selectedAgent, selectedInstitution);
   return true;
 };
 
@@ -729,6 +816,7 @@ const sendToGoogleSheets = (recordData) => {
 
   const payload = {
     occurrenceNumber: recordData.occurrenceNumber,
+    institution: recordData.institution || getInstitutionLabel(getLoggedInstitutionKey()),
     date: recordData.date,
     time: recordData.time,
     agent: recordData.agent,
@@ -784,7 +872,8 @@ const updateRecordsList = () => {
       duplicateCount > 1
         ? `<span class="badge">${duplicateCount} ocorrências</span>`
         : '';
-    summary.innerHTML = `<strong>${record.infractorName}</strong> ${duplicateBadge}<br />Nº ${record.occurrenceNumber} • ${record.vehiclePlate}`;
+    const institutionLabel = record.institution || '--';
+    summary.innerHTML = `<strong>${record.infractorName}</strong> ${duplicateBadge}<br />Nº ${record.occurrenceNumber} • ${record.vehiclePlate}<br />${institutionLabel} • ${record.agent || '--'}`;
 
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'record-actions';
@@ -821,6 +910,7 @@ const updateRecordsList = () => {
     recordsList.appendChild(recordItem);
   });
 
+  populateFilterAgents();
   updateDashboard();
 };
 
@@ -960,6 +1050,7 @@ const renderRecordDetail = (record) => {
     record.occurrenceNumber || '--'
   }`;
   recordDetailBody.innerHTML = `
+    <div><strong>Instituição:</strong> ${record.institution || '--'}</div>
     <div><strong>Agente:</strong> ${record.agent || '--'}</div>
     <div><strong>Data:</strong> ${record.date || '--'} <span>• ${record.time || '--'}</span></div>
     <div><strong>CPF:</strong> ${record.infractorDoc || '--'}</div>
@@ -1090,9 +1181,13 @@ const clearFormAfterRecord = () => {
   setCurrentTime();
   occurrenceNumberInput.value = generateUniqueOccurrenceNumber();
   const loggedAgent = localStorage.getItem(sessionKey);
+  const loggedInstitution = getLoggedInstitutionKey();
   if (loggedAgent) {
     agentSelect.value = loggedAgent;
-    agentSelect.disabled = true;
+    agentSelect.readOnly = true;
+  }
+  if (institutionInput && loggedInstitution) {
+    institutionInput.value = getInstitutionLabel(loggedInstitution);
   }
   updateAgentName();
 };
@@ -1106,6 +1201,10 @@ const clearForm = () => {
     vehicleNoPlateInput.checked = false;
   }
   syncVehiclePlateState();
+  const loggedInstitution = getLoggedInstitutionKey();
+  if (institutionInput && loggedInstitution) {
+    institutionInput.value = getInstitutionLabel(loggedInstitution);
+  }
   updateAgentName();
 };
 
@@ -1113,6 +1212,7 @@ const validateRequiredFields = () => {
   syncVehiclePlateState();
   const requiredFields = [
     { id: 'occurrenceNumber', name: 'Número da Ocorrência' },
+    { id: 'institution', name: 'Instituição' },
     { id: 'agent', name: 'Nome do Agente' },
     { id: 'date', name: 'Data da Ocorrência' },
     { id: 'time', name: 'Hora da Ocorrência' },
@@ -1174,6 +1274,10 @@ const addRecord = async () => {
   if (!recordData.agent) {
     const loggedAgent = localStorage.getItem(sessionKey);
     recordData.agent = agentSelect.value || loggedAgent || '';
+  }
+  if (!recordData.institution) {
+    const loggedInstitution = getLoggedInstitutionKey();
+    recordData.institution = getInstitutionLabel(loggedInstitution);
   }
 
   try {
@@ -1285,6 +1389,7 @@ const editRecord = (index) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   document.getElementById('occurrenceNumber').value = record.occurrenceNumber || '';
+  document.getElementById('institution').value = record.institution || '';
   document.getElementById('agent').value = record.agent || '';
   document.getElementById('date').value = record.date || '';
   document.getElementById('time').value = record.time || '';
@@ -1347,7 +1452,8 @@ const confirmRemoveRecord = async () => {
   }
 
   // Validar senha (primeiro nome + 2026)
-  const expectedPassword = getAgentPassword(loggedAgent);
+  const institutionKey = getLoggedInstitutionKey() || 'icmbio';
+  const expectedPassword = getExpectedPassword(institutionKey, loggedAgent);
   
   if (password !== expectedPassword) {
     deletePasswordError.textContent = 'Senha incorreta';
@@ -1463,6 +1569,8 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   doc.text(`Número da Ocorrência: ${record.occurrenceNumber}`, marginLeft, yPos);
   doc.text(`Data: ${record.date}`, 105, yPos);
   doc.text(`Hora: ${record.time}`, 160, yPos);
+  yPos += 8;
+  doc.text(`Instituição: ${record.institution || '--'}`, marginLeft, yPos);
   yPos += 8;
   doc.text(`Agente: ${record.agent}`, marginLeft, yPos);
   yPos += 8;
@@ -1819,12 +1927,15 @@ window.addEventListener('load', () => {
     occurrenceNumberInput.value = generateUniqueOccurrenceNumber();
     updateAgentName();
     updateRecordsList();
-    populateAgentSelects();
+    populateLoginAgents();
+    populateFilterAgents();
+    updateLoginAgentMode();
     populateMonthYearFilters();
 
     const loggedAgent = localStorage.getItem(sessionKey);
+    const loggedInstitution = localStorage.getItem(sessionInstitutionKey) || 'icmbio';
     if (loggedAgent) {
-      setLoggedAgent(loggedAgent);
+      setLoggedUser(loggedAgent, loggedInstitution);
       showView('dashboardView');
     } else {
       loginScreen.classList.remove('hidden');
@@ -1990,3 +2101,13 @@ clearFiltersBtn.addEventListener('click', () => {
   filterDuplicates.checked = false;
   updateDashboard();
 });
+
+if (loginInstitution) {
+  loginInstitution.addEventListener('change', updateLoginAgentMode);
+}
+
+if (loginAgentCustom) {
+  loginAgentCustom.addEventListener('input', (event) => {
+    event.target.value = event.target.value.toUpperCase();
+  });
+}
