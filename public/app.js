@@ -704,6 +704,31 @@ const normalizePhotoUrl = (url) => {
   return trimmed;
 };
 
+const collectRecordPhotoLinks = (record) => {
+  const links = [];
+
+  if (Array.isArray(record.photoUrls)) {
+    record.photoUrls.forEach((url) => {
+      const normalized = normalizePhotoUrl(url);
+      if (normalized) links.push(normalized);
+    });
+  }
+
+  if (Array.isArray(record.photos)) {
+    record.photos.forEach((photo) => {
+      if (photo?.url && typeof photo.url === 'string') {
+        const normalized = normalizePhotoUrl(photo.url);
+        if (normalized) links.push(normalized);
+      } else if (typeof photo === 'string') {
+        const normalized = normalizePhotoUrl(photo);
+        if (normalized) links.push(normalized);
+      }
+    });
+  }
+
+  return Array.from(new Set(links));
+};
+
 const setCurrentTime = () => {
   timeInput.value = formatTime(new Date());
 };
@@ -1840,91 +1865,48 @@ const renderRecordToDoc = (doc, record, options = {}) => {
     });
   }
 
-  if (record.photos && record.photos.length > 0) {
-    yPos += 10;
-    
-    // Verifica se precisa de nova página
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('REGISTRO FOTOGRÁFICO', marginLeft, yPos);
-    yPos += 10;
-
-    // Adiciona cada foto
-    record.photos.forEach((photo, photoIndex) => {
-      // Verifica espaço na página
-      if (yPos > 240) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      try {
-        if (photo.data) {
-          const imgWidth = 100;
-          const imgHeight = 75;
-          const xPos = (pageWidth - imgWidth) / 2;
-
-          doc.addImage(photo.data, 'JPEG', xPos, yPos, imgWidth, imgHeight);
-          yPos += imgHeight + 8;
-          
-          // Legenda
-          doc.setFontSize(9);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(0, 0, 0);
-          doc.text(`Foto ${photoIndex + 1}`, xPos + imgWidth / 2, yPos, { align: 'center' });
-          yPos += 8;
-        }
-      } catch (err) {
-        // Se falhar, tenta continuar
-        console.log('Erro ao adicionar foto:', err);
-      }
-    });
-  }
-  
-  // Se houver links externos de fotos (Google Drive, etc)
-  if (record.externalPhotoLinks && record.externalPhotoLinks.length > 0) {
-    yPos += 10;
-    
-    // Verifica se precisa de nova página
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
-    
+  const photoLinks = Array.isArray(record.externalPhotoLinks) ? record.externalPhotoLinks : [];
+  if (photoLinks.length > 0) {
+    yPos += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 69, 33);
-    doc.text('FOTOS ARMAZENADAS EXTERNAMENTE', marginLeft, yPos);
-    yPos += 8;
-    
+    doc.text('FOTOS DO VEÍCULO (LINKS ONLINE)', marginLeft, yPos);
+    yPos += 6;
+
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
-    doc.text('As seguintes fotos estão disponíveis nos links abaixo:', marginLeft, yPos);
-    yPos += 8;
-    
-    record.externalPhotoLinks.forEach((link, index) => {
-      if (yPos > 280) {
-        doc.addPage();
-        yPos = 20;
+
+    const maxYPos = 272;
+    let hiddenCount = 0;
+    photoLinks.forEach((link, index) => {
+      if (yPos > maxYPos) {
+        hiddenCount += 1;
+        return;
       }
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Foto ${index + 1}:`, marginLeft, yPos);
-      yPos += 5;
-      doc.setFont('helvetica', 'italic');
+
+      const label = `Abrir foto ${index + 1}`;
+      const prefix = `• ${label}: `;
+
+      doc.text(prefix, marginLeft, yPos);
+      const prefixWidth = doc.getTextWidth(prefix);
+      const linkX = marginLeft + prefixWidth;
+
       doc.setTextColor(0, 0, 255);
-      const linkLines = doc.splitTextToSize(link, contentWidth - 10);
-      linkLines.forEach((line) => {
-        doc.text(line, marginLeft + 5, yPos);
-        yPos += 5;
-      });
+      if (typeof doc.textWithLink === 'function') {
+        doc.textWithLink(link, linkX, yPos, { url: link });
+      } else {
+        doc.text(link, linkX, yPos);
+      }
       doc.setTextColor(0, 0, 0);
-      yPos += 3;
+      yPos += 5;
     });
+
+    if (hiddenCount > 0 && yPos <= 278) {
+      doc.setFontSize(8);
+      doc.text(`... ${hiddenCount} link(s) adicional(is) não exibidos nesta página.`, marginLeft, yPos);
+    }
   }
 
   doc.setFontSize(8);
@@ -1937,44 +1919,10 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   );
 };
 
-// Função para preparar fotos do registro (separa base64 de URLs externas)
+// Função para preparar links de fotos do registro (mantém PDF em uma página por ocorrência)
 const prepareRecordPhotos = async (record) => {
-  const preparedPhotos = [];
-  const externalLinks = [];
-  const urlCandidates = [];
-
-  if (record.photoUrls && record.photoUrls.length) {
-    urlCandidates.push(...record.photoUrls);
-  }
-
-  if (record.photos && record.photos.length) {
-    for (const photo of record.photos) {
-      try {
-        if (photo?.data && photo.data.startsWith('data:image')) {
-          preparedPhotos.push(photo);
-        } else if (photo?.url && photo.url.startsWith('http')) {
-          urlCandidates.push(photo.url);
-        } else if (typeof photo === 'string' && photo.startsWith('http')) {
-          urlCandidates.push(photo);
-        }
-      } catch (error) {
-        console.log('Erro ao processar foto:', error);
-      }
-    }
-  }
-
-  const uniqueUrls = Array.from(new Set(urlCandidates));
-  for (const url of uniqueUrls) {
-    try {
-      const normalizedUrl = normalizePhotoUrl(url);
-      const dataUrl = await fetchImageAsDataUrl(normalizedUrl);
-      preparedPhotos.push({ data: dataUrl, name: 'foto_online.jpg' });
-    } catch (error) {
-      externalLinks.push(normalizePhotoUrl(url));
-    }
-  }
-
-  return { ...record, photos: preparedPhotos, externalPhotoLinks: externalLinks };
+  const externalLinks = collectRecordPhotoLinks(record);
+  return { ...record, photos: [], externalPhotoLinks: externalLinks };
 };
 
 const generatePDFBlob = async (record) => {
