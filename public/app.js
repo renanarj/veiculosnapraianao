@@ -506,6 +506,54 @@ const loadRecords = async () => {
   return loadRecordsFromStorage();
 };
 
+const backfillMissingInstitutions = async () => {
+  if (!Array.isArray(allRecords) || allRecords.length === 0) return;
+
+  const defaultInstitution = institutions.icmbio;
+  const firestoreUpdates = [];
+  let hasChanges = false;
+
+  allRecords = allRecords.map((record) => {
+    if ((record.institution || '').trim()) {
+      return record;
+    }
+
+    hasChanges = true;
+    const updatedRecord = { ...record, institution: defaultInstitution };
+
+    if (db && record.id) {
+      firestoreUpdates.push(
+        db
+          .collection('records')
+          .doc(record.id)
+          .set(
+            {
+              institution: defaultInstitution,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          )
+      );
+    }
+
+    return updatedRecord;
+  });
+
+  if (!hasChanges) return;
+
+  if (db && firestoreUpdates.length) {
+    for (const updatePromise of firestoreUpdates) {
+      try {
+        await updatePromise;
+      } catch (error) {
+        // segue com atualização local em caso de falha pontual no Firebase
+      }
+    }
+  }
+
+  persistLocalIfNeeded();
+};
+
 const migrateLocalToFirestore = async () => {
   if (!db) return [];
   const alreadyMigrated = localStorage.getItem(migrationKey);
@@ -1996,6 +2044,7 @@ window.addEventListener('load', () => {
         allRecords = migrated;
       }
     }
+    await backfillMissingInstitutions();
     allRecords.forEach((record) => {
       if (record.occurrenceNumber) usedOccurrenceNumbers.add(record.occurrenceNumber);
     });
