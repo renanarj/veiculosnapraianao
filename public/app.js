@@ -688,6 +688,22 @@ const fetchImageAsDataUrl = async (url) => {
   throw lastError || new Error('Falha ao baixar imagem');
 };
 
+const normalizePhotoUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  const byPath = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const byQuery = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const fileId = (byPath && byPath[1]) || (byQuery && byQuery[1]) || '';
+
+  if (fileId) {
+    return `https://drive.google.com/uc?export=download&id=${fileId}`;
+  }
+
+  return trimmed;
+};
+
 const setCurrentTime = () => {
   timeInput.value = formatTime(new Date());
 };
@@ -971,7 +987,7 @@ const sendToGoogleSheets = async (recordData) => {
         method: 'POST',
         mode: 'cors',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain;charset=utf-8',
         },
         body: JSON.stringify(payload),
       }),
@@ -980,7 +996,14 @@ const sendToGoogleSheets = async (recordData) => {
     );
 
     if (response.ok) {
-      const result = await response.json().catch(() => null);
+      const responseText = await response.text();
+      const result = (() => {
+        try {
+          return JSON.parse(responseText || '{}');
+        } catch (error) {
+          return null;
+        }
+      })();
       showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
       const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
       return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
@@ -1943,10 +1966,11 @@ const prepareRecordPhotos = async (record) => {
   const uniqueUrls = Array.from(new Set(urlCandidates));
   for (const url of uniqueUrls) {
     try {
-      const dataUrl = await fetchImageAsDataUrl(url);
+      const normalizedUrl = normalizePhotoUrl(url);
+      const dataUrl = await fetchImageAsDataUrl(normalizedUrl);
       preparedPhotos.push({ data: dataUrl, name: 'foto_online.jpg' });
     } catch (error) {
-      externalLinks.push(url);
+      externalLinks.push(normalizePhotoUrl(url));
     }
   }
 
