@@ -55,6 +55,7 @@ const statDuplicates = document.getElementById('statDuplicates');
 const statCurrentMonth = document.getElementById('statCurrentMonth');
 const toggleAnalysisBtn = document.getElementById('toggleAnalysisBtn');
 const analysisPanel = document.getElementById('analysisPanel');
+const filterInstitution = document.getElementById('filterInstitution');
 const filterAgent = document.getElementById('filterAgent');
 const filterMonth = document.getElementById('filterMonth');
 const filterYear = document.getElementById('filterYear');
@@ -308,6 +309,30 @@ const populateFilterAgents = () => {
     option.textContent = agentName;
     filterAgent.appendChild(option);
   });
+};
+
+const populateInstitutionFilter = () => {
+  if (!filterInstitution) return;
+  const selectedInstitution = filterInstitution.value;
+  filterInstitution.innerHTML = '<option value="">Todos</option>';
+
+  const institutionOptions = Array.from(
+    new Set([
+      ...Object.values(institutions),
+      ...allRecords.map((record) => (record.institution || '').trim()).filter(Boolean),
+    ])
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  institutionOptions.forEach((institutionName) => {
+    const option = document.createElement('option');
+    option.value = institutionName;
+    option.textContent = institutionName;
+    filterInstitution.appendChild(option);
+  });
+
+  if (selectedInstitution) {
+    filterInstitution.value = selectedInstitution;
+  }
 };
 
 const populateMonthYearFilters = () => {
@@ -911,6 +936,7 @@ const updateRecordsList = () => {
   });
 
   populateFilterAgents();
+  populateInstitutionFilter();
   updateDashboard();
 };
 
@@ -925,6 +951,9 @@ const buildDuplicateMap = (records) => {
 
 const applyFilters = (records) => {
   let filtered = [...records];
+  if (filterInstitution?.value) {
+    filtered = filtered.filter((record) => (record.institution || '') === filterInstitution.value);
+  }
   if (filterAgent.value) {
     filtered = filtered.filter((record) => record.agent === filterAgent.value);
   }
@@ -1848,6 +1877,7 @@ const getReportTitle = () => {
 
   const dateFrom = filterDateFrom.value;
   const dateTo = filterDateTo.value;
+  const selectedInstitution = filterInstitution?.value || '';
   const selectedAgent = filterAgent.value;
 
   const titleParts = [];
@@ -1867,8 +1897,15 @@ const getReportTitle = () => {
     titleParts.push('Relatório');
   }
 
-  if (selectedAgent) {
-    titleParts.push(`registradas pelo agente ${selectedAgent}`);
+  if (selectedInstitution || selectedAgent) {
+    const qualifiers = [];
+    if (selectedInstitution) {
+      qualifiers.push(`pela instituição ${selectedInstitution}`);
+    }
+    if (selectedAgent) {
+      qualifiers.push(`pelo agente ${selectedAgent}`);
+    }
+    titleParts.push(`das ocorrências registradas ${qualifiers.join(' e ')}`);
   }
 
   titleParts.push('na atividade de Veículos na Praia Não');
@@ -2092,6 +2129,9 @@ if (toggleFiltersBtn && dashboardFiltersPanel) {
 }
 
 clearFiltersBtn.addEventListener('click', () => {
+  if (filterInstitution) {
+    filterInstitution.value = '';
+  }
   filterAgent.value = '';
   filterMonth.value = '';
   filterYear.value = '';
