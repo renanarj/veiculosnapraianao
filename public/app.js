@@ -98,6 +98,7 @@ let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' par
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
+const recurrenceWindowMs = 2 * 60 * 60 * 1000;
 const institutions = {
   icmbio: 'Instituto Chico Mendes - ICMBio',
   semarh: 'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH',
@@ -230,6 +231,37 @@ const getDriverKey = (record) => {
   const cpf = (record.infractorDoc || '').replace(/\D/g, '');
   if (cpf) return `cpf:${cpf}`;
   return `name:${normalizeText(record.infractorName)}`;
+};
+
+const getRecordTimestamp = (record) => {
+  const dateValue = (record.date || '').trim();
+  if (!dateValue) return null;
+  const timeValue = (record.time || '00:00').trim() || '00:00';
+  const parsed = new Date(`${dateValue}T${timeValue}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.getTime();
+};
+
+const hasValidRecurrence = (records) => {
+  if (!records || records.length < 2) return false;
+
+  const timestamps = records
+    .map((record) => getRecordTimestamp(record))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  if (timestamps.length >= 2) {
+    for (let index = 1; index < timestamps.length; index += 1) {
+      if (timestamps[index] - timestamps[index - 1] >= recurrenceWindowMs) {
+        return true;
+      }
+    }
+  }
+
+  const distinctDates = new Set(records.map((record) => (record.date || '').trim()).filter(Boolean));
+  if (distinctDates.size > 1) return true;
+
+  return false;
 };
 
 const isFirebaseConfigured = () =>
@@ -941,10 +973,16 @@ const updateRecordsList = () => {
 };
 
 const buildDuplicateMap = (records) => {
-  const map = {};
+  const grouped = {};
   records.forEach((record) => {
     const key = getDriverKey(record);
-    map[key] = (map[key] || 0) + 1;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(record);
+  });
+
+  const map = {};
+  Object.entries(grouped).forEach(([key, driverRecords]) => {
+    map[key] = hasValidRecurrence(driverRecords) ? driverRecords.length : 1;
   });
   return map;
 };
@@ -1011,6 +1049,7 @@ const renderDriversList = (records) => {
     const key = getDriverKey(record);
     if (!acc[key]) {
       acc[key] = {
+        key,
         name: record.infractorName || 'Condutor',
         doc: record.infractorDoc || '',
         whatsapp: record.whatsapp || '',
@@ -1029,6 +1068,7 @@ const renderDriversList = (records) => {
     return acc;
   }, {});
 
+  const recurrenceMap = buildDuplicateMap(records);
   const list = Object.values(byDriver).sort((a, b) => b.occurrences - a.occurrences);
   list.forEach((driver) => {
     const card = document.createElement('div');
@@ -1037,7 +1077,7 @@ const renderDriversList = (records) => {
     const doc = driver.doc ? driver.doc : '--';
     const whatsapp = driver.whatsapp ? driver.whatsapp : '--';
     const lastDate = driver.lastDate ? driver.lastDate : '--';
-    const badge = driver.occurrences > 1 ? ' <span class="badge">Reincidente</span>' : '';
+    const badge = (recurrenceMap[driver.key] || 0) > 1 ? ' <span class="badge">Reincidente</span>' : '';
     card.innerHTML = `
       <h4>${driver.name}${badge}</h4>
       <div class="driver-meta">
