@@ -649,17 +649,43 @@ const uploadRecordAssets = async (recordData, recordId) => {
 };
 
 const fetchImageAsDataUrl = async (url) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('Falha ao baixar imagem');
+  const getDriveFileId = (inputUrl) => {
+    if (!inputUrl) return '';
+    const byPath = inputUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (byPath && byPath[1]) return byPath[1];
+    const byQuery = inputUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (byQuery && byQuery[1]) return byQuery[1];
+    return '';
+  };
+
+  const candidates = [url];
+  const driveFileId = getDriveFileId(url);
+  if (driveFileId) {
+    candidates.push(`https://drive.google.com/uc?export=download&id=${driveFileId}`);
+    candidates.push(`https://drive.google.com/thumbnail?id=${driveFileId}&sz=w2000`);
+    candidates.push(`https://lh3.googleusercontent.com/d/${driveFileId}=s2000`);
   }
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+
+  let lastError = null;
+  for (const candidateUrl of Array.from(new Set(candidates))) {
+    try {
+      const response = await fetch(candidateUrl, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Falha ao baixar imagem');
 };
 
 const setCurrentTime = () => {
@@ -914,9 +940,9 @@ const sendWhatsAppMessage = () => {
   window.open(`https://wa.me/55${whatsappNumber}?text=${encodedMessage}`, '_blank');
 };
 
-const sendToGoogleSheets = (recordData) => {
+const sendToGoogleSheets = async (recordData) => {
   if (!scriptUrl) {
-    return;
+    return [];
   }
 
   const payload = {
@@ -939,7 +965,30 @@ const sendToGoogleSheets = (recordData) => {
     photoUrls: recordData.photoUrls || [],
   };
 
-  // Enviar de forma assíncrona, sem bloquear
+  try {
+    const response = await withTimeout(
+      fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }),
+      20000,
+      'Timeout ao enviar para planilha online.'
+    );
+
+    if (response.ok) {
+      const result = await response.json().catch(() => null);
+      showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
+      const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
+      return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
+    }
+  } catch (error) {
+    // Fallback para envio sem CORS caso o endpoint não esteja configurado para resposta ao navegador
+  }
+
   fetch(scriptUrl, {
     method: 'POST',
     mode: 'no-cors',
@@ -947,13 +996,11 @@ const sendToGoogleSheets = (recordData) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  })
-    .then(() => {
-      showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
-    })
-    .catch(() => {
-      // Falha silenciosa, pois o registro já foi salvo localmente
-    });
+  }).catch(() => {
+    // Falha silenciosa, pois o registro já foi salvo localmente/Firebase
+  });
+
+  return [];
 };
 
 const updateRecordsList = () => {
@@ -1482,7 +1529,28 @@ const addRecord = async () => {
     setSavingState(false);
   }
 
-  sendToGoogleSheets(recordData);
+  const onlinePhotoLinks = await sendToGoogleSheets(recordData);
+  if (onlinePhotoLinks.length) {
+    recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
+
+    if (db && recordData.id) {
+      try {
+        await db.collection('records').doc(recordData.id).set(
+          {
+            photoUrls: recordData.photoUrls,
+            photosCount: recordData.photoUrls.length,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        // segue com dados locais
+      }
+    }
+
+    persistLocalIfNeeded();
+  }
+
   updateRecordsList();
   persistLocalIfNeeded();
   populateMonthYearFilters();
