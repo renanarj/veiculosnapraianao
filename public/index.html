@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <meta name="description" content="Aplicação responsiva pronta para publicar no Firebase Hosting." />
-    <title>Formulário de Fiscalização</title>
+    <title>Formulário de cadastro de condutores</title>
     <link rel="stylesheet" href="/styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -37,8 +37,8 @@
             <select id="loginInstitution" required>
               <option value="">Selecione a instituição</option>
               <option value="icmbio">Instituto Chico Mendes - ICMBio</option>
-              <option value="semarh">Secretaria de Meio Ambiente do Estado do Piauí - SEMARH</option>
-              <option value="pmpi">Batalhão de Polícia Ambiental - PMPI</option>
+              <option value="semarh">Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH</option>
+              <option value="pmpi">Polícia Militar do Estado do Piauí - PMPI</option>
               <option value="prefeitura">Prefeitura Municipal de Luís Correia</option>
             </select>
           </div>
@@ -69,7 +69,7 @@
       <header class="app-header">
         <div class="app-title">
           <h1>Veículos na Praia Não</h1>
-          <span class="app-subtitle">Sistema de Fiscalização</span>
+          <span class="app-subtitle">Sistema de cadastro de condutores</span>
         </div>
         <div class="app-user">
           <span id="currentAgent">Agente: --</span>
@@ -189,7 +189,7 @@
             <button type="button" id="backToDashboardBtn" class="ghost-btn">Voltar ao dashboard</button>
           </div>
           <div class="header-container">
-            <h1>Formulário de Fiscalização</h1>
+            <h1>Formulário de cadastro de condutores</h1>
           </div>
 
           <div class="agent-name">Instituição: <span id="institutionDisplay">[Instituição]</span></div>

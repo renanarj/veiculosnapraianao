@@ -99,8 +99,8 @@ const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
 const institutions = {
   icmbio: 'Instituto Chico Mendes - ICMBio',
-  semarh: 'Secretaria de Meio Ambiente do Estado do Piauí - SEMARH',
-  pmpi: 'Batalhão de Polícia Ambiental - PMPI',
+  semarh: 'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH',
+  pmpi: 'Polícia Militar do Estado do Piauí - PMPI',
   prefeitura: 'Prefeitura Municipal de Luís Correia',
 };
 const institutionPasswords = {
@@ -276,7 +276,7 @@ const updateLoginAgentMode = () => {
   loginAgentCustom.classList.toggle('hidden', isIcmbio);
   loginAgent.required = isIcmbio;
   loginAgentCustom.required = Boolean(selectedInstitution) && !isIcmbio;
-  loginAgentLabel.textContent = isIcmbio ? 'Nome do Agente' : 'Responsável';
+  loginAgentLabel.textContent = isIcmbio ? 'Nome do Agente' : 'Agente';
 
   if (isIcmbio) {
     loginAgentCustom.value = '';
