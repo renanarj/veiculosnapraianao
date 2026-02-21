@@ -471,6 +471,13 @@
 
     <!-- Câmera Fullscreen -->
     <div id="fullscreenCameraModal" class="fullscreen-camera-modal hidden">
+      <div class="fullscreen-camera-info" aria-live="polite">
+        <div class="camera-info-line" id="cameraInfoOccurrence">Ocorrencia: --</div>
+        <div class="camera-info-line" id="cameraInfoDateTime">--</div>
+        <div class="camera-info-line" id="cameraInfoCoordinates">--</div>
+        <div class="camera-info-line" id="cameraInfoInstitution">--</div>
+        <div class="camera-info-line" id="cameraInfoAgent">--</div>
+      </div>
       <video id="fullscreenCameraPreview" autoplay playsinline></video>
       <div class="fullscreen-camera-controls">
         <button type="button" id="toggleFrontCameraBtn" class="camera-control-btn" title="Trocar câmera">

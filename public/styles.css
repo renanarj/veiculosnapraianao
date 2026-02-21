@@ -1321,6 +1321,23 @@ body {
   margin: 0;
 }
 
+.fullscreen-camera-info {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: #ffffff;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+  max-width: 45%;
+  pointer-events: none;
+}
+
+.camera-info-line {
+  margin-bottom: 6px;
+}
+
 .fullscreen-camera-modal.hidden {
   display: none !important;
 }
@@ -1390,4 +1407,13 @@ body {
   background: #476b1d;
   transform: scale(0.95);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 720px) {
+  .fullscreen-camera-info {
+    max-width: 70%;
+    font-size: 0.98rem;
+    top: 16px;
+    left: 16px;
+  }
 }

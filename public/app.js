@@ -30,6 +30,11 @@ const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview
 const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
 const cancelFullscreenCameraBtn = document.getElementById('cancelFullscreenCameraBtn');
 const toggleFrontCameraBtn = document.getElementById('toggleFrontCameraBtn');
+const cameraInfoOccurrence = document.getElementById('cameraInfoOccurrence');
+const cameraInfoDateTime = document.getElementById('cameraInfoDateTime');
+const cameraInfoCoordinates = document.getElementById('cameraInfoCoordinates');
+const cameraInfoInstitution = document.getElementById('cameraInfoInstitution');
+const cameraInfoAgent = document.getElementById('cameraInfoAgent');
 const loginScreen = document.getElementById('loginScreen');
 const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
@@ -160,6 +165,31 @@ const formatDateBr = (dateValue) => {
   const [year, month, day] = dateValue.split('-');
   if (!year || !month || !day) return dateValue;
   return `${day}/${month}/${year}`;
+};
+
+const getFirstTwoNames = (name) => {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '';
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1]}`;
+};
+
+const updateFullscreenCameraInfo = () => {
+  if (!cameraInfoOccurrence) return;
+  const occurrenceValue = (occurrenceNumberInput?.value || '').trim();
+  const dateValue = formatDateBr((dateInput?.value || '').trim());
+  const timeValue = (timeInput?.value || '').trim();
+  const locationValue = (locationInput?.value || '').trim();
+  const institutionValue = (institutionInput?.value || institutionDisplay?.textContent || '').trim();
+  const agentValue = (agentSelect?.value || agentDisplay?.textContent || '').trim();
+  const dateTimeValue = dateValue && timeValue ? `${dateValue} - ${timeValue}` : dateValue || timeValue;
+  const agentShort = getFirstTwoNames(agentValue);
+
+  cameraInfoOccurrence.textContent = `Ocorrencia: ${occurrenceValue || '--'}`;
+  cameraInfoDateTime.textContent = dateTimeValue || '--';
+  cameraInfoCoordinates.textContent = locationValue || '--';
+  cameraInfoInstitution.textContent = institutionValue || '--';
+  cameraInfoAgent.textContent = agentShort || '--';
 };
 
 const withTimeout = (promise, timeoutMs, timeoutMessage) =>
@@ -868,6 +898,7 @@ const openFullscreenCamera = async () => {
       video: { facingMode: cameraFacingMode }
     });
     fullscreenCameraPreview.srcObject = stream;
+    updateFullscreenCameraInfo();
     fullscreenCameraModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   } catch (error) {
@@ -2119,6 +2150,18 @@ window.addEventListener('load', () => {
 agentSelect.addEventListener('change', updateAgentName);
 setTimeBtn.addEventListener('click', setCurrentTime);
 locationBtn.addEventListener('click', getCurrentLocation);
+[
+  occurrenceNumberInput,
+  dateInput,
+  timeInput,
+  locationInput,
+  institutionInput,
+  agentSelect,
+].forEach((field) => {
+  if (!field) return;
+  field.addEventListener('input', updateFullscreenCameraInfo);
+  field.addEventListener('change', updateFullscreenCameraInfo);
+});
 if (vehicleNoPlateInput) {
   vehicleNoPlateInput.addEventListener('change', syncVehiclePlateState);
 }
