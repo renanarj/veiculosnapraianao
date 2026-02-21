@@ -182,7 +182,9 @@ const getCameraInfoLines = () => {
   const dateValue = formatDateBr((dateInput?.value || '').trim());
   const timeValue = (timeInput?.value || '').trim();
   const locationValue = (locationInput?.value || '').trim();
-  const institutionValue = (institutionInput?.value || institutionDisplay?.textContent || '').trim();
+  const institutionValue = getInstitutionShortLabel(
+    (institutionInput?.value || institutionDisplay?.textContent || '').trim()
+  );
   const agentValue = (agentSelect?.value || agentDisplay?.textContent || '').trim();
   const dateTimeValue = dateValue && timeValue ? `${dateValue} - ${timeValue}` : dateValue || timeValue;
   const agentShort = getFirstTwoNames(agentValue);
@@ -273,6 +275,27 @@ const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
 const getLoggedInstitutionKey = () => localStorage.getItem(sessionInstitutionKey) || '';
 
 const getInstitutionLabel = (institutionKey) => institutions[institutionKey] || '';
+const institutionShortLabels = {
+  icmbio: 'ICMBio',
+  semarh: 'Semarh',
+  pmpi: 'PMPI',
+  prefeitura: 'Prefeitura Luís Correia',
+};
+const institutionLabelToShort = {
+  'Instituto Chico Mendes - ICMBio': institutionShortLabels.icmbio,
+  'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH':
+    institutionShortLabels.semarh,
+  'Polícia Militar do Estado do Piauí - PMPI': institutionShortLabels.pmpi,
+  'Prefeitura Municipal de Luís Correia': institutionShortLabels.prefeitura,
+};
+
+const getInstitutionShortLabel = (value) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (institutionShortLabels[trimmed]) return institutionShortLabels[trimmed];
+  if (institutionLabelToShort[trimmed]) return institutionLabelToShort[trimmed];
+  return trimmed;
+};
 
 const getCurrentLoginAgent = () => {
   const selectedInstitution = loginInstitution?.value || '';
@@ -1077,7 +1100,7 @@ const sendWhatsAppMessage = () => {
 
 const sendToGoogleSheets = async (recordData) => {
   if (!scriptUrl) {
-    return [];
+    return { photoLinks: [], albumLink: '' };
   }
 
   const payload = {
@@ -1098,6 +1121,7 @@ const sendToGoogleSheets = async (recordData) => {
     timestamp: new Date().toISOString(),
     photos: recordData.photos || [], // Adiciona as fotos!
     photoUrls: recordData.photoUrls || [],
+    photoAlbumLink: recordData.photoAlbumLink || '',
   };
 
   try {
@@ -1125,7 +1149,16 @@ const sendToGoogleSheets = async (recordData) => {
       })();
       showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
       const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
-      return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
+      const albumLink =
+        result?.albumLink ||
+        result?.albumUrl ||
+        result?.folderLink ||
+        result?.photoAlbumLink ||
+        '';
+      return {
+        photoLinks: photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http')),
+        albumLink: typeof albumLink === 'string' ? albumLink : '',
+      };
     }
   } catch (error) {
     // Fallback para envio sem CORS caso o endpoint não esteja configurado para resposta ao navegador
@@ -1142,7 +1175,7 @@ const sendToGoogleSheets = async (recordData) => {
     // Falha silenciosa, pois o registro já foi salvo localmente/Firebase
   });
 
-  return [];
+  return { photoLinks: [], albumLink: '' };
 };
 
 const updateRecordsList = () => {
@@ -1678,11 +1711,33 @@ const addRecord = async () => {
 
   bumpProgress(80, 'Salvando informacoes na planilha online...');
   let onlinePhotoLinks = [];
+  let onlineAlbumLink = '';
   try {
-    onlinePhotoLinks = await sendToGoogleSheets(recordData);
+    const sheetResult = await sendToGoogleSheets(recordData);
+    onlinePhotoLinks = sheetResult.photoLinks || [];
+    onlineAlbumLink = sheetResult.albumLink || '';
   } catch (error) {
     onlinePhotoLinks = [];
   }
+  if (onlineAlbumLink) {
+    recordData.photoAlbumLink = onlineAlbumLink;
+  }
+  if (onlineAlbumLink && (!onlinePhotoLinks.length || !recordData.photoUrls?.length)) {
+    if (db && recordData.id) {
+      try {
+        await db.collection('records').doc(recordData.id).set(
+          {
+            photoAlbumLink: recordData.photoAlbumLink || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        // segue com dados locais
+      }
+    }
+  }
+
   if (onlinePhotoLinks.length) {
     recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
 
@@ -1693,6 +1748,7 @@ const addRecord = async () => {
           {
             photoUrls: recordData.photoUrls,
             photosCount: recordData.photoUrls.length,
+            photoAlbumLink: recordData.photoAlbumLink || '',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1974,47 +2030,64 @@ const renderRecordToDoc = (doc, record, options = {}) => {
     });
   }
 
+  const albumLink =
+    record.photoAlbumLink || record.photoAlbumUrl || record.externalPhotoAlbumLink || '';
   const photoLinks = Array.isArray(record.externalPhotoLinks) ? record.externalPhotoLinks : [];
-  if (photoLinks.length > 0) {
+  if (albumLink || photoLinks.length > 0) {
     yPos += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 69, 33);
-    doc.text('FOTOS DO VEÍCULO (LINKS ONLINE)', marginLeft, yPos);
+    doc.text('FOTOS DO VEÍCULO (ALBUM ONLINE)', marginLeft, yPos);
     yPos += 6;
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
 
-    const maxYPos = 272;
-    let hiddenCount = 0;
-    photoLinks.forEach((link, index) => {
-      if (yPos > maxYPos) {
-        hiddenCount += 1;
-        return;
-      }
-
-      const label = `Abrir foto ${index + 1}`;
-      const prefix = `• ${label}: `;
-
+    if (albumLink) {
+      const prefix = '• Abrir album: ';
       doc.text(prefix, marginLeft, yPos);
-      const prefixWidth = doc.getTextWidth(prefix);
-      const linkX = marginLeft + prefixWidth;
-
+      const linkX = marginLeft + doc.getTextWidth(prefix);
       doc.setTextColor(0, 0, 255);
       if (typeof doc.textWithLink === 'function') {
-        doc.textWithLink(link, linkX, yPos, { url: link });
+        doc.textWithLink(albumLink, linkX, yPos, { url: albumLink });
       } else {
-        doc.text(link, linkX, yPos);
+        doc.text(albumLink, linkX, yPos);
       }
       doc.setTextColor(0, 0, 0);
       yPos += 5;
-    });
+    } else {
 
-    if (hiddenCount > 0 && yPos <= 278) {
-      doc.setFontSize(8);
-      doc.text(`... ${hiddenCount} link(s) adicional(is) não exibidos nesta página.`, marginLeft, yPos);
+      const maxYPos = 272;
+      let hiddenCount = 0;
+      photoLinks.forEach((link, index) => {
+        if (yPos > maxYPos) {
+          hiddenCount += 1;
+          return;
+        }
+
+        const label = `Abrir foto ${index + 1}`;
+        const prefix = `• ${label}: `;
+
+        doc.text(prefix, marginLeft, yPos);
+        const prefixWidth = doc.getTextWidth(prefix);
+        const linkX = marginLeft + prefixWidth;
+
+        doc.setTextColor(0, 0, 255);
+        if (typeof doc.textWithLink === 'function') {
+          doc.textWithLink(link, linkX, yPos, { url: link });
+        } else {
+          doc.text(link, linkX, yPos);
+        }
+        doc.setTextColor(0, 0, 0);
+        yPos += 5;
+      });
+
+      if (hiddenCount > 0 && yPos <= 278) {
+        doc.setFontSize(8);
+        doc.text(`... ${hiddenCount} link(s) adicional(is) não exibidos nesta página.`, marginLeft, yPos);
+      }
     }
   }
 
