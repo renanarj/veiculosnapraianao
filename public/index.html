@@ -409,7 +409,13 @@
             alt="Carregando"
             src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' stroke='%23588526' stroke-width='10' fill='none' stroke-linecap='round' stroke-dasharray='210' stroke-dashoffset='60'><animateTransform attributeName='transform' type='rotate' from='0 50 50' to='360 50 50' dur='1s' repeatCount='indefinite'/></circle></svg>"
           />
-          <p>Salvando ocorrência...</p>
+          <div class="saving-content">
+            <p id="savingProgressMessage">Salvando ocorrencia...</p>
+            <div class="saving-progress">
+              <div id="savingProgressBar" class="saving-progress-bar"></div>
+            </div>
+            <div id="savingProgressText" class="saving-progress-text">0%</div>
+          </div>
         </div>
       </div>
     </div>

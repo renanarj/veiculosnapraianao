@@ -370,6 +370,33 @@ button:disabled {
   font-weight: 600;
 }
 
+.saving-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.saving-progress {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e8efe0;
+  overflow: hidden;
+}
+
+.saving-progress-bar {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #588526, #98c419);
+  transition: width 0.3s ease;
+}
+
+.saving-progress-text {
+  font-size: 0.9rem;
+  color: #1f2f1a;
+}
+
 .saving-image {
   width: 56px;
   height: 56px;

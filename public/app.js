@@ -93,6 +93,9 @@ const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
 const photoModal = document.getElementById('photoModal');
 const photoModalImage = document.getElementById('photoModalImage');
 const photoModalClose = document.getElementById('photoModalClose');
+const savingProgressBar = document.getElementById('savingProgressBar');
+const savingProgressText = document.getElementById('savingProgressText');
+const savingProgressMessage = document.getElementById('savingProgressMessage');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -369,6 +372,22 @@ const updateAgentName = () => {
 const setSavingState = (isSaving) => {
   if (!savingOverlay) return;
   savingOverlay.classList.toggle('hidden', !isSaving);
+  savingOverlay.setAttribute('aria-busy', isSaving ? 'true' : 'false');
+  if (isSaving) {
+    setSavingProgress(5, 'Preparando informacoes...');
+  } else {
+    setSavingProgress(0, '');
+  }
+};
+
+const setSavingProgress = (percent, message) => {
+  if (!savingProgressBar || !savingProgressText || !savingProgressMessage) return;
+  const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+  savingProgressBar.style.width = `${clamped}%`;
+  savingProgressText.textContent = `${Math.round(clamped)}%`;
+  if (message !== undefined) {
+    savingProgressMessage.textContent = message || '';
+  }
 };
 
 const updateLoginAgentMode = () => {
@@ -1544,6 +1563,7 @@ const addRecord = async () => {
   if (!validateRequiredFields()) return;
 
   setSavingState(true);
+  setSavingProgress(10, 'Preparando informacoes da ocorrencia...');
 
   const formData = new FormData(document.getElementById('fiscalizationForm'));
   const recordData = {};
@@ -1567,7 +1587,11 @@ const addRecord = async () => {
     recordData.institution = getInstitutionLabel(loggedInstitution);
   }
 
+  const hasPhotos = Array.isArray(recordData.photos) && recordData.photos.length > 0;
+  const bumpProgress = (percent, message) => setSavingProgress(percent, message);
+
   try {
+    bumpProgress(25, 'Salvando informacoes na plataforma...');
     if (currentlyEditingIndex >= 0) {
       const existing = allRecords[currentlyEditingIndex];
       const recordId = existing?.id;
@@ -1587,6 +1611,7 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
+          bumpProgress(55, hasPhotos ? 'Salvando fotos online...' : 'Nenhuma foto para enviar.');
           const assets = await uploadRecordAssets(recordData, recordData.id);
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
@@ -1621,6 +1646,7 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
+          bumpProgress(55, hasPhotos ? 'Salvando fotos online...' : 'Nenhuma foto para enviar.');
           const assets = await uploadRecordAssets(recordData, recordData.id);
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
@@ -1648,16 +1674,21 @@ const addRecord = async () => {
     } else {
       allRecords.push(recordData);
     }
-  } finally {
-    setSavingState(false);
   }
 
-  const onlinePhotoLinks = await sendToGoogleSheets(recordData);
+  bumpProgress(80, 'Salvando informacoes na planilha online...');
+  let onlinePhotoLinks = [];
+  try {
+    onlinePhotoLinks = await sendToGoogleSheets(recordData);
+  } catch (error) {
+    onlinePhotoLinks = [];
+  }
   if (onlinePhotoLinks.length) {
     recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
 
     if (db && recordData.id) {
       try {
+        bumpProgress(90, 'Atualizando registro com links das fotos...');
         await db.collection('records').doc(recordData.id).set(
           {
             photoUrls: recordData.photoUrls,
@@ -1678,6 +1709,9 @@ const addRecord = async () => {
   persistLocalIfNeeded();
   populateMonthYearFilters();
   clearFormAfterRecord();
+
+  bumpProgress(100, 'Concluido!');
+  setTimeout(() => setSavingState(false), 300);
 
   // Scroll para o topo do formulário
   window.scrollTo({ top: 0, behavior: 'smooth' });
