@@ -174,8 +174,7 @@ const getFirstTwoNames = (name) => {
   return `${parts[0]} ${parts[1]}`;
 };
 
-const updateFullscreenCameraInfo = () => {
-  if (!cameraInfoOccurrence) return;
+const getCameraInfoLines = () => {
   const occurrenceValue = (occurrenceNumberInput?.value || '').trim();
   const dateValue = formatDateBr((dateInput?.value || '').trim());
   const timeValue = (timeInput?.value || '').trim();
@@ -185,11 +184,53 @@ const updateFullscreenCameraInfo = () => {
   const dateTimeValue = dateValue && timeValue ? `${dateValue} - ${timeValue}` : dateValue || timeValue;
   const agentShort = getFirstTwoNames(agentValue);
 
-  cameraInfoOccurrence.textContent = `Ocorrencia: ${occurrenceValue || '--'}`;
-  cameraInfoDateTime.textContent = dateTimeValue || '--';
-  cameraInfoCoordinates.textContent = locationValue || '--';
-  cameraInfoInstitution.textContent = institutionValue || '--';
-  cameraInfoAgent.textContent = agentShort || '--';
+  return [
+    `Ocorrencia: ${occurrenceValue || '--'}`,
+    dateTimeValue || '--',
+    locationValue || '--',
+    institutionValue || '--',
+    agentShort || '--',
+  ];
+};
+
+const updateFullscreenCameraInfo = () => {
+  if (!cameraInfoOccurrence) return;
+  const lines = getCameraInfoLines();
+  cameraInfoOccurrence.textContent = lines[0];
+  cameraInfoDateTime.textContent = lines[1];
+  cameraInfoCoordinates.textContent = lines[2];
+  cameraInfoInstitution.textContent = lines[3];
+  cameraInfoAgent.textContent = lines[4];
+};
+
+const updateFullscreenCameraOrientation = () => {
+  if (!fullscreenCameraModal) return;
+  const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+  const isAngleLandscape = Math.abs(angle) === 90;
+  const isViewportLandscape = window.innerWidth > window.innerHeight;
+  const shouldForceLandscape = isAngleLandscape && !isViewportLandscape;
+
+  fullscreenCameraModal.classList.toggle('force-landscape', shouldForceLandscape);
+};
+
+const drawCameraInfoOnCanvas = (context, canvasWidth, canvasHeight) => {
+  const lines = getCameraInfoLines();
+  const baseSize = Math.max(16, Math.round(Math.min(canvasWidth, canvasHeight) * 0.032));
+  const lineHeight = Math.round(baseSize * 1.35);
+  const padding = Math.round(baseSize * 0.9);
+
+  context.save();
+  context.font = `700 ${baseSize}px Inter, Arial, sans-serif`;
+  context.fillStyle = '#ffffff';
+  context.shadowColor = 'rgba(0, 0, 0, 0.6)';
+  context.shadowBlur = Math.round(baseSize * 0.5);
+  context.shadowOffsetY = Math.round(baseSize * 0.15);
+
+  lines.forEach((line, index) => {
+    const y = padding + baseSize + index * lineHeight;
+    context.fillText(line, padding, y);
+  });
+  context.restore();
 };
 
 const withTimeout = (promise, timeoutMs, timeoutMessage) =>
@@ -899,6 +940,7 @@ const openFullscreenCamera = async () => {
     });
     fullscreenCameraPreview.srcObject = stream;
     updateFullscreenCameraInfo();
+    updateFullscreenCameraOrientation();
     fullscreenCameraModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   } catch (error) {
@@ -912,6 +954,7 @@ const closeFullscreenCamera = () => {
     stream.getTracks().forEach((track) => track.stop());
     stream = null;
   }
+  fullscreenCameraModal.classList.remove('force-landscape');
   fullscreenCameraModal.classList.add('hidden');
   document.body.style.overflow = '';
 };
@@ -927,6 +970,7 @@ const captureFullscreenPhoto = async () => {
   canvas.height = fullscreenCameraPreview.videoHeight;
   const context = canvas.getContext('2d');
   context.drawImage(fullscreenCameraPreview, 0, 0, canvas.width, canvas.height);
+  drawCameraInfoOnCanvas(context, canvas.width, canvas.height);
 
   const photoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
   addPhotoPreview(photoDataUrl, 'camera_' + new Date().getTime() + '.jpg');
@@ -2146,6 +2190,9 @@ window.addEventListener('load', () => {
     }
   })();
 });
+
+window.addEventListener('orientationchange', updateFullscreenCameraOrientation);
+window.addEventListener('resize', updateFullscreenCameraOrientation);
 
 agentSelect.addEventListener('change', updateAgentName);
 setTimeBtn.addEventListener('click', setCurrentTime);
