@@ -30,11 +30,6 @@ const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview
 const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
 const cancelFullscreenCameraBtn = document.getElementById('cancelFullscreenCameraBtn');
 const toggleFrontCameraBtn = document.getElementById('toggleFrontCameraBtn');
-const cameraInfoOccurrence = document.getElementById('cameraInfoOccurrence');
-const cameraInfoDateTime = document.getElementById('cameraInfoDateTime');
-const cameraInfoCoordinates = document.getElementById('cameraInfoCoordinates');
-const cameraInfoInstitution = document.getElementById('cameraInfoInstitution');
-const cameraInfoAgent = document.getElementById('cameraInfoAgent');
 const loginScreen = document.getElementById('loginScreen');
 const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
@@ -93,9 +88,6 @@ const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
 const photoModal = document.getElementById('photoModal');
 const photoModalImage = document.getElementById('photoModalImage');
 const photoModalClose = document.getElementById('photoModalClose');
-const savingProgressBar = document.getElementById('savingProgressBar');
-const savingProgressText = document.getElementById('savingProgressText');
-const savingProgressMessage = document.getElementById('savingProgressMessage');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -170,74 +162,6 @@ const formatDateBr = (dateValue) => {
   return `${day}/${month}/${year}`;
 };
 
-const getFirstTwoNames = (name) => {
-  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '';
-  if (parts.length === 1) return parts[0];
-  return `${parts[0]} ${parts[1]}`;
-};
-
-const getCameraInfoLines = () => {
-  const occurrenceValue = (occurrenceNumberInput?.value || '').trim();
-  const dateValue = formatDateBr((dateInput?.value || '').trim());
-  const timeValue = (timeInput?.value || '').trim();
-  const locationValue = (locationInput?.value || '').trim();
-  const institutionValue = getInstitutionShortLabel(
-    (institutionInput?.value || institutionDisplay?.textContent || '').trim()
-  );
-  const agentValue = (agentSelect?.value || agentDisplay?.textContent || '').trim();
-  const dateTimeValue = dateValue && timeValue ? `${dateValue} - ${timeValue}` : dateValue || timeValue;
-  const agentShort = getFirstTwoNames(agentValue);
-
-  return [
-    `Ocorrencia: ${occurrenceValue || '--'}`,
-    dateTimeValue || '--',
-    locationValue || '--',
-    institutionValue || '--',
-    agentShort || '--',
-  ];
-};
-
-const updateFullscreenCameraInfo = () => {
-  if (!cameraInfoOccurrence) return;
-  const lines = getCameraInfoLines();
-  cameraInfoOccurrence.textContent = lines[0];
-  cameraInfoDateTime.textContent = lines[1];
-  cameraInfoCoordinates.textContent = lines[2];
-  cameraInfoInstitution.textContent = lines[3];
-  cameraInfoAgent.textContent = lines[4];
-};
-
-const updateFullscreenCameraOrientation = () => {
-  if (!fullscreenCameraModal) return;
-  const angle = screen.orientation?.angle ?? window.orientation ?? 0;
-  const isAngleLandscape = Math.abs(angle) === 90;
-  const isViewportLandscape = window.innerWidth > window.innerHeight;
-  const shouldForceLandscape = isAngleLandscape && !isViewportLandscape;
-
-  fullscreenCameraModal.classList.toggle('force-landscape', shouldForceLandscape);
-};
-
-const drawCameraInfoOnCanvas = (context, canvasWidth, canvasHeight) => {
-  const lines = getCameraInfoLines();
-  const baseSize = Math.max(16, Math.round(Math.min(canvasWidth, canvasHeight) * 0.032));
-  const lineHeight = Math.round(baseSize * 1.35);
-  const padding = Math.round(baseSize * 0.9);
-
-  context.save();
-  context.font = `700 ${baseSize}px Inter, Arial, sans-serif`;
-  context.fillStyle = '#ffffff';
-  context.shadowColor = 'rgba(0, 0, 0, 0.6)';
-  context.shadowBlur = Math.round(baseSize * 0.5);
-  context.shadowOffsetY = Math.round(baseSize * 0.15);
-
-  lines.forEach((line, index) => {
-    const y = padding + baseSize + index * lineHeight;
-    context.fillText(line, padding, y);
-  });
-  context.restore();
-};
-
 const withTimeout = (promise, timeoutMs, timeoutMessage) =>
   Promise.race([
     promise,
@@ -275,27 +199,6 @@ const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
 const getLoggedInstitutionKey = () => localStorage.getItem(sessionInstitutionKey) || '';
 
 const getInstitutionLabel = (institutionKey) => institutions[institutionKey] || '';
-const institutionShortLabels = {
-  icmbio: 'ICMBio',
-  semarh: 'Semarh',
-  pmpi: 'PMPI',
-  prefeitura: 'Prefeitura Luís Correia',
-};
-const institutionLabelToShort = {
-  'Instituto Chico Mendes - ICMBio': institutionShortLabels.icmbio,
-  'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH':
-    institutionShortLabels.semarh,
-  'Polícia Militar do Estado do Piauí - PMPI': institutionShortLabels.pmpi,
-  'Prefeitura Municipal de Luís Correia': institutionShortLabels.prefeitura,
-};
-
-const getInstitutionShortLabel = (value) => {
-  if (!value) return '';
-  const trimmed = value.trim();
-  if (institutionShortLabels[trimmed]) return institutionShortLabels[trimmed];
-  if (institutionLabelToShort[trimmed]) return institutionLabelToShort[trimmed];
-  return trimmed;
-};
 
 const getCurrentLoginAgent = () => {
   const selectedInstitution = loginInstitution?.value || '';
@@ -395,28 +298,16 @@ const updateAgentName = () => {
 const setSavingState = (isSaving) => {
   if (!savingOverlay) return;
   savingOverlay.classList.toggle('hidden', !isSaving);
-  savingOverlay.setAttribute('aria-busy', isSaving ? 'true' : 'false');
-  if (isSaving) {
-    setSavingProgress(5, 'Preparando informacoes...');
-  } else {
-    setSavingProgress(0, '');
-  }
-};
-
-const setSavingProgress = (percent, message) => {
-  if (!savingProgressBar || !savingProgressText || !savingProgressMessage) return;
-  const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
-  savingProgressBar.style.width = `${clamped}%`;
-  savingProgressText.textContent = `${Math.round(clamped)}%`;
-  if (message !== undefined) {
-    savingProgressMessage.textContent = message || '';
-  }
 };
 
 const updateLoginAgentMode = () => {
   if (!loginInstitution || !loginAgent || !loginAgentCustom || !loginAgentLabel) return;
   const selectedInstitution = loginInstitution.value;
   const isIcmbio = selectedInstitution === 'icmbio';
+
+  if (isIcmbio && loginAgent.options.length <= 1) {
+    populateLoginAgents();
+  }
 
   loginAgent.classList.toggle('hidden', !isIcmbio);
   loginAgentCustom.classList.toggle('hidden', isIcmbio);
@@ -981,8 +872,6 @@ const openFullscreenCamera = async () => {
       video: { facingMode: cameraFacingMode }
     });
     fullscreenCameraPreview.srcObject = stream;
-    updateFullscreenCameraInfo();
-    updateFullscreenCameraOrientation();
     fullscreenCameraModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   } catch (error) {
@@ -996,7 +885,6 @@ const closeFullscreenCamera = () => {
     stream.getTracks().forEach((track) => track.stop());
     stream = null;
   }
-  fullscreenCameraModal.classList.remove('force-landscape');
   fullscreenCameraModal.classList.add('hidden');
   document.body.style.overflow = '';
 };
@@ -1012,7 +900,6 @@ const captureFullscreenPhoto = async () => {
   canvas.height = fullscreenCameraPreview.videoHeight;
   const context = canvas.getContext('2d');
   context.drawImage(fullscreenCameraPreview, 0, 0, canvas.width, canvas.height);
-  drawCameraInfoOnCanvas(context, canvas.width, canvas.height);
 
   const photoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
   addPhotoPreview(photoDataUrl, 'camera_' + new Date().getTime() + '.jpg');
@@ -1100,7 +987,7 @@ const sendWhatsAppMessage = () => {
 
 const sendToGoogleSheets = async (recordData) => {
   if (!scriptUrl) {
-    return { photoLinks: [], albumLink: '' };
+    return [];
   }
 
   const payload = {
@@ -1121,7 +1008,6 @@ const sendToGoogleSheets = async (recordData) => {
     timestamp: new Date().toISOString(),
     photos: recordData.photos || [], // Adiciona as fotos!
     photoUrls: recordData.photoUrls || [],
-    photoAlbumLink: recordData.photoAlbumLink || '',
   };
 
   try {
@@ -1149,16 +1035,7 @@ const sendToGoogleSheets = async (recordData) => {
       })();
       showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
       const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
-      const albumLink =
-        result?.albumLink ||
-        result?.albumUrl ||
-        result?.folderLink ||
-        result?.photoAlbumLink ||
-        '';
-      return {
-        photoLinks: photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http')),
-        albumLink: typeof albumLink === 'string' ? albumLink : '',
-      };
+      return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
     }
   } catch (error) {
     // Fallback para envio sem CORS caso o endpoint não esteja configurado para resposta ao navegador
@@ -1175,7 +1052,7 @@ const sendToGoogleSheets = async (recordData) => {
     // Falha silenciosa, pois o registro já foi salvo localmente/Firebase
   });
 
-  return { photoLinks: [], albumLink: '' };
+  return [];
 };
 
 const updateRecordsList = () => {
@@ -1596,7 +1473,6 @@ const addRecord = async () => {
   if (!validateRequiredFields()) return;
 
   setSavingState(true);
-  setSavingProgress(10, 'Preparando informacoes da ocorrencia...');
 
   const formData = new FormData(document.getElementById('fiscalizationForm'));
   const recordData = {};
@@ -1620,11 +1496,7 @@ const addRecord = async () => {
     recordData.institution = getInstitutionLabel(loggedInstitution);
   }
 
-  const hasPhotos = Array.isArray(recordData.photos) && recordData.photos.length > 0;
-  const bumpProgress = (percent, message) => setSavingProgress(percent, message);
-
   try {
-    bumpProgress(25, 'Salvando informacoes na plataforma...');
     if (currentlyEditingIndex >= 0) {
       const existing = allRecords[currentlyEditingIndex];
       const recordId = existing?.id;
@@ -1644,7 +1516,6 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
-          bumpProgress(55, hasPhotos ? 'Salvando fotos online...' : 'Nenhuma foto para enviar.');
           const assets = await uploadRecordAssets(recordData, recordData.id);
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
@@ -1679,7 +1550,6 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
-          bumpProgress(55, hasPhotos ? 'Salvando fotos online...' : 'Nenhuma foto para enviar.');
           const assets = await uploadRecordAssets(recordData, recordData.id);
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
@@ -1707,48 +1577,20 @@ const addRecord = async () => {
     } else {
       allRecords.push(recordData);
     }
+  } finally {
+    setSavingState(false);
   }
 
-  bumpProgress(80, 'Salvando informacoes na planilha online...');
-  let onlinePhotoLinks = [];
-  let onlineAlbumLink = '';
-  try {
-    const sheetResult = await sendToGoogleSheets(recordData);
-    onlinePhotoLinks = sheetResult.photoLinks || [];
-    onlineAlbumLink = sheetResult.albumLink || '';
-  } catch (error) {
-    onlinePhotoLinks = [];
-  }
-  if (onlineAlbumLink) {
-    recordData.photoAlbumLink = onlineAlbumLink;
-  }
-  if (onlineAlbumLink && (!onlinePhotoLinks.length || !recordData.photoUrls?.length)) {
-    if (db && recordData.id) {
-      try {
-        await db.collection('records').doc(recordData.id).set(
-          {
-            photoAlbumLink: recordData.photoAlbumLink || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } catch (error) {
-        // segue com dados locais
-      }
-    }
-  }
-
+  const onlinePhotoLinks = await sendToGoogleSheets(recordData);
   if (onlinePhotoLinks.length) {
     recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
 
     if (db && recordData.id) {
       try {
-        bumpProgress(90, 'Atualizando registro com links das fotos...');
         await db.collection('records').doc(recordData.id).set(
           {
             photoUrls: recordData.photoUrls,
             photosCount: recordData.photoUrls.length,
-            photoAlbumLink: recordData.photoAlbumLink || '',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1765,9 +1607,6 @@ const addRecord = async () => {
   persistLocalIfNeeded();
   populateMonthYearFilters();
   clearFormAfterRecord();
-
-  bumpProgress(100, 'Concluido!');
-  setTimeout(() => setSavingState(false), 300);
 
   // Scroll para o topo do formulário
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2030,64 +1869,47 @@ const renderRecordToDoc = (doc, record, options = {}) => {
     });
   }
 
-  const albumLink =
-    record.photoAlbumLink || record.photoAlbumUrl || record.externalPhotoAlbumLink || '';
   const photoLinks = Array.isArray(record.externalPhotoLinks) ? record.externalPhotoLinks : [];
-  if (albumLink || photoLinks.length > 0) {
+  if (photoLinks.length > 0) {
     yPos += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 69, 33);
-    doc.text('FOTOS DO VEÍCULO (ALBUM ONLINE)', marginLeft, yPos);
+    doc.text('FOTOS DO VEÍCULO (LINKS ONLINE)', marginLeft, yPos);
     yPos += 6;
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
 
-    if (albumLink) {
-      const prefix = '• Abrir album: ';
+    const maxYPos = 272;
+    let hiddenCount = 0;
+    photoLinks.forEach((link, index) => {
+      if (yPos > maxYPos) {
+        hiddenCount += 1;
+        return;
+      }
+
+      const label = `Abrir foto ${index + 1}`;
+      const prefix = `• ${label}: `;
+
       doc.text(prefix, marginLeft, yPos);
-      const linkX = marginLeft + doc.getTextWidth(prefix);
+      const prefixWidth = doc.getTextWidth(prefix);
+      const linkX = marginLeft + prefixWidth;
+
       doc.setTextColor(0, 0, 255);
       if (typeof doc.textWithLink === 'function') {
-        doc.textWithLink(albumLink, linkX, yPos, { url: albumLink });
+        doc.textWithLink(link, linkX, yPos, { url: link });
       } else {
-        doc.text(albumLink, linkX, yPos);
+        doc.text(link, linkX, yPos);
       }
       doc.setTextColor(0, 0, 0);
       yPos += 5;
-    } else {
+    });
 
-      const maxYPos = 272;
-      let hiddenCount = 0;
-      photoLinks.forEach((link, index) => {
-        if (yPos > maxYPos) {
-          hiddenCount += 1;
-          return;
-        }
-
-        const label = `Abrir foto ${index + 1}`;
-        const prefix = `• ${label}: `;
-
-        doc.text(prefix, marginLeft, yPos);
-        const prefixWidth = doc.getTextWidth(prefix);
-        const linkX = marginLeft + prefixWidth;
-
-        doc.setTextColor(0, 0, 255);
-        if (typeof doc.textWithLink === 'function') {
-          doc.textWithLink(link, linkX, yPos, { url: link });
-        } else {
-          doc.text(link, linkX, yPos);
-        }
-        doc.setTextColor(0, 0, 0);
-        yPos += 5;
-      });
-
-      if (hiddenCount > 0 && yPos <= 278) {
-        doc.setFontSize(8);
-        doc.text(`... ${hiddenCount} link(s) adicional(is) não exibidos nesta página.`, marginLeft, yPos);
-      }
+    if (hiddenCount > 0 && yPos <= 278) {
+      doc.setFontSize(8);
+      doc.text(`... ${hiddenCount} link(s) adicional(is) não exibidos nesta página.`, marginLeft, yPos);
     }
   }
 
@@ -2258,64 +2080,60 @@ const generatePDF = async () => {
 
 window.addEventListener('load', () => {
   (async () => {
-    initFirebase();
-    allRecords = await loadRecords();
-    if (db && allRecords.length === 0) {
-      const migrated = await migrateLocalToFirestore();
-      if (migrated.length) {
-        allRecords = migrated;
-      }
-    }
-    await backfillMissingInstitutions();
-    allRecords.forEach((record) => {
-      if (record.occurrenceNumber) usedOccurrenceNumbers.add(record.occurrenceNumber);
-    });
-    dateInput.value = formatDate(new Date());
-    setCurrentTime();
-    occurrenceNumberInput.value = generateUniqueOccurrenceNumber();
-    updateAgentName();
-    updateRecordsList();
-    populateLoginAgents();
-    populateFilterAgents();
-    updateLoginAgentMode();
-    populateMonthYearFilters();
+    try {
+      populateLoginAgents();
+      updateLoginAgentMode();
 
-    const loggedAgent = localStorage.getItem(sessionKey);
-    const loggedInstitution = localStorage.getItem(sessionInstitutionKey) || 'icmbio';
-    if (loggedAgent) {
-      setLoggedUser(loggedAgent, loggedInstitution);
-      showView('dashboardView');
-    } else {
+      initFirebase();
+      allRecords = await loadRecords();
+      if (db && allRecords.length === 0) {
+        const migrated = await migrateLocalToFirestore();
+        if (migrated.length) {
+          allRecords = migrated;
+        }
+      }
+
+      await backfillMissingInstitutions();
+      allRecords.forEach((record) => {
+        if (record.occurrenceNumber) usedOccurrenceNumbers.add(record.occurrenceNumber);
+      });
+      dateInput.value = formatDate(new Date());
+      setCurrentTime();
+      occurrenceNumberInput.value = generateUniqueOccurrenceNumber();
+      updateAgentName();
+      updateRecordsList();
+      populateLoginAgents();
+      populateFilterAgents();
+      updateLoginAgentMode();
+      populateMonthYearFilters();
+
+      const loggedAgent = localStorage.getItem(sessionKey);
+      const loggedInstitution = localStorage.getItem(sessionInstitutionKey) || 'icmbio';
+      if (loggedAgent) {
+        setLoggedUser(loggedAgent, loggedInstitution);
+        showView('dashboardView');
+      } else {
+        loginScreen.classList.remove('hidden');
+        appShell.classList.add('hidden');
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const recordId = params.get('recordId');
+      if (recordId) {
+        await showRecordDetail(recordId);
+      }
+    } catch (error) {
+      populateLoginAgents();
+      updateLoginAgentMode();
       loginScreen.classList.remove('hidden');
       appShell.classList.add('hidden');
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const recordId = params.get('recordId');
-    if (recordId) {
-      await showRecordDetail(recordId);
     }
   })();
 });
 
-window.addEventListener('orientationchange', updateFullscreenCameraOrientation);
-window.addEventListener('resize', updateFullscreenCameraOrientation);
-
 agentSelect.addEventListener('change', updateAgentName);
 setTimeBtn.addEventListener('click', setCurrentTime);
 locationBtn.addEventListener('click', getCurrentLocation);
-[
-  occurrenceNumberInput,
-  dateInput,
-  timeInput,
-  locationInput,
-  institutionInput,
-  agentSelect,
-].forEach((field) => {
-  if (!field) return;
-  field.addEventListener('input', updateFullscreenCameraInfo);
-  field.addEventListener('change', updateFullscreenCameraInfo);
-});
 if (vehicleNoPlateInput) {
   vehicleNoPlateInput.addEventListener('change', syncVehiclePlateState);
 }

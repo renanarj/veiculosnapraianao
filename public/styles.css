@@ -370,33 +370,6 @@ button:disabled {
   font-weight: 600;
 }
 
-.saving-content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 220px;
-}
-
-.saving-progress {
-  width: 100%;
-  height: 10px;
-  border-radius: 999px;
-  background: #e8efe0;
-  overflow: hidden;
-}
-
-.saving-progress-bar {
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, #588526, #98c419);
-  transition: width 0.3s ease;
-}
-
-.saving-progress-text {
-  font-size: 0.9rem;
-  color: #1f2f1a;
-}
-
 .saving-image {
   width: 56px;
   height: 56px;
@@ -1348,39 +1321,6 @@ body {
   margin: 0;
 }
 
-.fullscreen-camera-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.fullscreen-camera-modal.force-landscape .fullscreen-camera-stage {
-  width: 100vh;
-  height: 100vw;
-  transform: rotate(90deg);
-  transform-origin: center;
-}
-
-.fullscreen-camera-info {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  color: #ffffff;
-  font-size: 1.05rem;
-  line-height: 1.5;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-  z-index: 10000;
-  max-width: 45%;
-  pointer-events: none;
-}
-
-.camera-info-line {
-  margin-bottom: 6px;
-}
-
 .fullscreen-camera-modal.hidden {
   display: none !important;
 }
@@ -1450,13 +1390,4 @@ body {
   background: #476b1d;
   transform: scale(0.95);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-@media (max-width: 720px) {
-  .fullscreen-camera-info {
-    max-width: 70%;
-    font-size: 0.98rem;
-    top: 16px;
-    left: 16px;
-  }
 }
