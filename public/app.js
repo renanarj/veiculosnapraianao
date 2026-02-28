@@ -141,6 +141,7 @@ const migrationKey = 'recordsMigratedToFirestore';
 let db = null;
 let storage = null;
 let auth = null;
+let firestoreReadBlocked = false;
 
 document.addEventListener(
   'dblclick',
@@ -511,12 +512,15 @@ const loadRecordsFromFirestore = async () => {
   if (!db) return [];
   try {
     const snapshot = await db.collection('records').orderBy('timestamp', 'desc').get();
+    firestoreReadBlocked = false;
     return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
   } catch (error) {
     try {
       const snapshot = await db.collection('records').get();
+      firestoreReadBlocked = false;
       return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
     } catch (fallbackError) {
+      firestoreReadBlocked = true;
       return [];
     }
   }
@@ -1103,7 +1107,11 @@ const sendToGoogleSheets = async (recordData) => {
 const updateRecordsList = () => {
   recordsList.innerHTML = '';
   if (allRecords.length === 0) {
-    recordsList.innerHTML = '<p>Nenhum registro adicionado ainda.</p>';
+    if (firestoreReadBlocked) {
+      recordsList.innerHTML = '<p>Registros temporariamente indisponíveis (permissão do Firestore). Ajuste as regras para restaurar a visualização.</p>';
+    } else {
+      recordsList.innerHTML = '<p>Nenhum registro adicionado ainda.</p>';
+    }
     updateDashboard();
     return;
   }
