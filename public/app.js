@@ -140,6 +140,7 @@ const sessionInstitutionKey = 'loggedInstitution';
 const migrationKey = 'recordsMigratedToFirestore';
 let db = null;
 let storage = null;
+let auth = null;
 
 document.addEventListener(
   'dblclick',
@@ -273,8 +274,19 @@ const initFirebase = () => {
   if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
   }
+  auth = firebase.auth();
   db = firebase.firestore();
   storage = firebase.storage();
+};
+
+const ensureFirebaseAuth = async () => {
+  if (!auth) return;
+  if (auth.currentUser) return;
+  try {
+    await auth.signInAnonymously();
+  } catch (error) {
+    // segue com fallback local se não autenticar
+  }
 };
 
 const formatTime = (date) => {
@@ -2118,6 +2130,7 @@ window.addEventListener('load', () => {
       updateLoginAgentMode();
 
       initFirebase();
+      await ensureFirebaseAuth();
       allRecords = await loadRecords();
       if (db && allRecords.length === 0) {
         const migrated = await migrateLocalToFirestore();
