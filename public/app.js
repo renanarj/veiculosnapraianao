@@ -134,6 +134,7 @@ const firebaseConfig = {
 };
 
 const storageKey = 'fiscalRecords';
+const backupStorageKey = 'fiscalRecordsBackup';
 const sessionKey = 'loggedAgent';
 const sessionInstitutionKey = 'loggedInstitution';
 const migrationKey = 'recordsMigratedToFirestore';
@@ -483,8 +484,8 @@ const showWhatsAppUnavailable = () => {
   showPopup('Ação não disponível nesta versão de teste.');
 };
 
-const loadRecordsFromStorage = () => {
-  const stored = localStorage.getItem(storageKey);
+const loadRecordsFromStorage = (key = storageKey) => {
+  const stored = localStorage.getItem(key);
   if (!stored) return [];
   try {
     const parsed = JSON.parse(stored);
@@ -500,14 +501,45 @@ const loadRecordsFromFirestore = async () => {
     const snapshot = await db.collection('records').orderBy('timestamp', 'desc').get();
     return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
   } catch (error) {
-    const snapshot = await db.collection('records').get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
+    try {
+      const snapshot = await db.collection('records').get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
+    } catch (fallbackError) {
+      return [];
+    }
   }
 };
 
+const getRecordMergeKey = (record) =>
+  record.id ||
+  [
+    record.occurrenceNumber || '',
+    record.date || '',
+    record.time || '',
+    normalizeText(record.agent || ''),
+    normalizeText(record.infractorName || ''),
+  ].join('|');
+
+const mergeRecords = (primaryRecords = [], secondaryRecords = []) => {
+  const mergedMap = new Map();
+  [...secondaryRecords, ...primaryRecords].forEach((record) => {
+    const mergeKey = getRecordMergeKey(record || {});
+    if (!mergeKey) return;
+    mergedMap.set(mergeKey, record);
+  });
+  return Array.from(mergedMap.values());
+};
+
 const loadRecords = async () => {
-  if (db) return loadRecordsFromFirestore();
-  return loadRecordsFromStorage();
+  const localRecords = loadRecordsFromStorage(storageKey);
+  const backupRecords = loadRecordsFromStorage(backupStorageKey);
+  const localMerged = mergeRecords(localRecords, backupRecords);
+
+  if (!db) return localMerged;
+
+  const remoteRecords = await loadRecordsFromFirestore();
+  const merged = mergeRecords(remoteRecords, localMerged);
+  return merged;
 };
 
 const backfillMissingInstitutions = async () => {
@@ -585,10 +617,11 @@ const migrateLocalToFirestore = async () => {
 
 const saveRecordsToStorage = () => {
   localStorage.setItem(storageKey, JSON.stringify(allRecords));
+  localStorage.setItem(backupStorageKey, JSON.stringify(allRecords));
 };
 
 const persistLocalIfNeeded = () => {
-  if (!db) saveRecordsToStorage();
+  saveRecordsToStorage();
 };
 
 const buildRecordPayload = (recordData, isNew) => {
@@ -2123,6 +2156,14 @@ window.addEventListener('load', () => {
         await showRecordDetail(recordId);
       }
     } catch (error) {
+      allRecords = loadRecordsFromStorage(storageKey);
+      if (!allRecords.length) {
+        allRecords = loadRecordsFromStorage(backupStorageKey);
+      }
+      updateRecordsList();
+      populateFilterAgents();
+      populateInstitutionFilter();
+      populateMonthYearFilters();
       populateLoginAgents();
       updateLoginAgentMode();
       loginScreen.classList.remove('hidden');
