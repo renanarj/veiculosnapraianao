@@ -77,6 +77,9 @@ const recordDetailBody = document.getElementById('recordDetailBody');
 const recordPdfLink = document.getElementById('recordPdfLink');
 const recordPhotos = document.getElementById('recordPhotos');
 const savingOverlay = document.getElementById('savingOverlay');
+const savingStepText = document.getElementById('savingStepText');
+const savingProgressBar = document.getElementById('savingProgressBar');
+const savingProgressPercent = document.getElementById('savingProgressPercent');
 const actionUnavailableModal = document.getElementById('actionUnavailableModal');
 const actionUnavailableMessage = document.getElementById('actionUnavailableMessage');
 const actionUnavailableOkBtn = document.getElementById('actionUnavailableOkBtn');
@@ -312,6 +315,19 @@ const updateAgentName = () => {
 const setSavingState = (isSaving) => {
   if (!savingOverlay) return;
   savingOverlay.classList.toggle('hidden', !isSaving);
+};
+
+const updateSavingProgress = (percent, stepText) => {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (savingProgressBar) {
+    savingProgressBar.style.width = `${safePercent}%`;
+  }
+  if (savingProgressPercent) {
+    savingProgressPercent.textContent = `${safePercent}%`;
+  }
+  if (savingStepText && stepText) {
+    savingStepText.textContent = stepText;
+  }
 };
 
 const updateLoginAgentMode = () => {
@@ -666,14 +682,24 @@ const extractPhotoUrls = (photos = []) => {
   return urls;
 };
 
-const uploadRecordAssets = async (recordData, recordId) => {
+const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   const existingUrls = extractPhotoUrls(recordData.photos);
   if (!storage || !recordData.photos || recordData.photos.length === 0) {
+    if (typeof onProgress === 'function') {
+      onProgress(100, 'Nenhuma imagem nova para enviar.');
+    }
     return { pdfUrl: '', photoUrls: existingUrls };
   }
 
   const uploadedUrls = [];
   const basePath = `records/${recordId}`;
+  const dataPhotos = recordData.photos.filter((photo) => photo?.data && photo.data.startsWith('data:image'));
+  const totalPhotos = dataPhotos.length;
+  let uploadedCount = 0;
+
+  if (typeof onProgress === 'function' && totalPhotos > 0) {
+    onProgress(0, `Preparando upload de ${totalPhotos} imagem(ns)...`);
+  }
 
   for (let index = 0; index < recordData.photos.length; index++) {
     const photo = recordData.photos[index];
@@ -692,9 +718,18 @@ const uploadRecordAssets = async (recordData, recordId) => {
         `Timeout ao obter URL da foto ${index + 1}.`
       );
       uploadedUrls.push(downloadUrl);
+      uploadedCount += 1;
+      if (typeof onProgress === 'function' && totalPhotos > 0) {
+        const uploadPercent = Math.round((uploadedCount / totalPhotos) * 100);
+        onProgress(uploadPercent, `Salvando imagens online (${uploadedCount}/${totalPhotos})...`);
+      }
     } catch (error) {
       // Se uma foto falhar, segue com as demais sem bloquear o salvamento
     }
+  }
+
+  if (typeof onProgress === 'function') {
+    onProgress(100, 'Upload de imagens concluido.');
   }
 
   const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
@@ -1526,6 +1561,7 @@ const addRecord = async () => {
   if (!validateRequiredFields()) return;
 
   setSavingState(true);
+  updateSavingProgress(5, 'Preparando salvamento das informacoes...');
 
   const formData = new FormData(document.getElementById('fiscalizationForm'));
   const recordData = {};
@@ -1550,6 +1586,8 @@ const addRecord = async () => {
   }
 
   try {
+    updateSavingProgress(18, 'Salvando informacoes na plataforma...');
+
     if (currentlyEditingIndex >= 0) {
       const existing = allRecords[currentlyEditingIndex];
       const recordId = existing?.id;
@@ -1569,7 +1607,11 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
-          const assets = await uploadRecordAssets(recordData, recordData.id);
+          updateSavingProgress(34, 'Iniciando upload das imagens...');
+          const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
+            const mapped = 34 + Math.round((photoPercent / 100) * 36);
+            updateSavingProgress(mapped, stepText);
+          });
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
             await db.collection('records').doc(recordData.id).set(
@@ -1603,7 +1645,11 @@ const addRecord = async () => {
       }
       if (db && recordData.id) {
         try {
-          const assets = await uploadRecordAssets(recordData, recordData.id);
+          updateSavingProgress(34, 'Iniciando upload das imagens...');
+          const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
+            const mapped = 34 + Math.round((photoPercent / 100) * 36);
+            updateSavingProgress(mapped, stepText);
+          });
           if (assets.photoUrls && assets.photoUrls.length) {
             recordData.photoUrls = assets.photoUrls;
             await db.collection('records').doc(recordData.id).set(
@@ -1630,10 +1676,9 @@ const addRecord = async () => {
     } else {
       allRecords.push(recordData);
     }
-  } finally {
-    setSavingState(false);
   }
 
+  updateSavingProgress(76, 'Salvando os dados na planilha online...');
   const onlinePhotoLinks = await sendToGoogleSheets(recordData);
   if (onlinePhotoLinks.length) {
     recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
@@ -1656,6 +1701,7 @@ const addRecord = async () => {
     persistLocalIfNeeded();
   }
 
+  updateSavingProgress(92, 'Finalizando e atualizando a lista...');
   updateRecordsList();
   persistLocalIfNeeded();
   populateMonthYearFilters();
@@ -1665,6 +1711,11 @@ const addRecord = async () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Mostrar notificação de sucesso
+  updateSavingProgress(100, 'Registro salvo com sucesso!');
+  setTimeout(() => {
+    setSavingState(false);
+    updateSavingProgress(0, 'Preparando salvamento...');
+  }, 350);
   showAlert(alertSuccess, 'Registro salvo com sucesso!');
 };
 

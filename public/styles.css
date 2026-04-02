@@ -368,11 +368,53 @@ button:disabled {
   gap: 16px;
   color: var(--green-dark);
   font-weight: 600;
+  width: min(520px, 94vw);
 }
 
 .saving-image {
   width: 56px;
   height: 56px;
+}
+
+.saving-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.saving-step-text {
+  margin: 0 0 8px;
+  font-size: 0.98rem;
+  color: var(--green-dark);
+}
+
+.saving-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saving-progress-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 999px;
+  background: #e8efdd;
+  overflow: hidden;
+}
+
+.saving-progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #588526 0%, #98c419 100%);
+  transition: width 0.25s ease;
+}
+
+.saving-progress-percent {
+  min-width: 42px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #315317;
 }
 
 .buttons-container button {
