@@ -1268,8 +1268,11 @@ const updateRecordsList = () => {
   }
 
   const duplicateMap = buildDuplicateMap(allRecords);
+  const orderedRecords = allRecords
+    .map((record, originalIndex) => ({ record, originalIndex }))
+    .reverse();
 
-  allRecords.forEach((record, index) => {
+  orderedRecords.forEach(({ record, originalIndex }) => {
     const recordItem = document.createElement('div');
     recordItem.className = 'record-item';
 
@@ -1292,20 +1295,20 @@ const updateRecordsList = () => {
     pdfBtn.className = 'edit-record';
     pdfBtn.textContent = 'PDF';
     pdfBtn.type = 'button';
-    pdfBtn.addEventListener('click', () => generateSinglePDF(index));
+    pdfBtn.addEventListener('click', () => generateSinglePDF(originalIndex));
 
     if (canManage) {
       const editBtn = document.createElement('button');
       editBtn.className = 'edit-record';
       editBtn.textContent = 'Editar';
       editBtn.type = 'button';
-      editBtn.addEventListener('click', () => editRecord(index));
+      editBtn.addEventListener('click', () => editRecord(originalIndex));
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-record';
       removeBtn.textContent = 'Remover';
       removeBtn.type = 'button';
-      removeBtn.addEventListener('click', () => removeRecord(index));
+      removeBtn.addEventListener('click', () => removeRecord(originalIndex));
 
       actionsDiv.appendChild(editBtn);
       actionsDiv.appendChild(removeBtn);
