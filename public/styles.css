@@ -48,6 +48,7 @@ button {
   font-size: 16px;
   min-height: 44px;
   border-radius: 10px;
+  appearance: none;
   -webkit-appearance: none;
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
@@ -316,6 +317,31 @@ button:disabled {
 .invalid-field {
   border-color: #cc0000 !important;
   background-color: #ffe6e6 !important;
+}
+
+.cpf-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cpf-inline input {
+  margin-bottom: 0;
+}
+
+.cpf-status {
+  min-width: 92px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cpf-status.valid {
+  color: #0f7a34;
+}
+
+.cpf-status.invalid {
+  color: #b3261e;
 }
 
 .two-columns {

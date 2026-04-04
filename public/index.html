@@ -284,14 +284,17 @@
 
           <div class="form-group">
             <label for="infractorDoc">CPF</label>
-            <input
-              type="text"
-              id="infractorDoc"
-              name="infractorDoc"
-              placeholder="000.000.000-00"
-              maxlength="14"
-              inputmode="numeric"
-            />
+            <div class="cpf-inline">
+              <input
+                type="text"
+                id="infractorDoc"
+                name="infractorDoc"
+                placeholder="000.000.000-00"
+                maxlength="14"
+                inputmode="numeric"
+              />
+              <span id="cpfStatus" class="cpf-status" aria-live="polite"></span>
+            </div>
           </div>
         </div>
 

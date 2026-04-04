@@ -12,6 +12,7 @@ const locationError = document.getElementById('locationError');
 const locationLoading = document.getElementById('locationLoading');
 const locationBtnText = document.getElementById('locationBtnText');
 const cpfInput = document.getElementById('infractorDoc');
+const cpfStatus = document.getElementById('cpfStatus');
 const whatsappInput = document.getElementById('whatsapp');
 const vehiclePlateInput = document.getElementById('vehiclePlate');
 const vehicleNoPlateInput = document.getElementById('vehicleNoPlate');
@@ -979,6 +980,45 @@ const formatCPF = (value) => {
     cpf = cpf.replace(/(\d{3})(\d{1,3})/, '$1.$2');
   }
   return cpf;
+};
+
+const isValidCPF = (cpfValue) => {
+  const digits = (cpfValue || '').replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  const nums = digits.split('').map((digit) => Number(digit));
+
+  let sum1 = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum1 += nums[i] * (10 - i);
+  }
+  let check1 = (sum1 * 10) % 11;
+  if (check1 === 10) check1 = 0;
+
+  let sum2 = 0;
+  for (let i = 0; i < 10; i += 1) {
+    sum2 += nums[i] * (11 - i);
+  }
+  let check2 = (sum2 * 10) % 11;
+  if (check2 === 10) check2 = 0;
+
+  return check1 === nums[9] && check2 === nums[10];
+};
+
+const updateCpfStatus = (cpfValue) => {
+  if (!cpfStatus) return;
+  const digits = (cpfValue || '').replace(/\D/g, '');
+
+  cpfStatus.textContent = '';
+  cpfStatus.classList.remove('valid', 'invalid');
+
+  if (!digits) return;
+  if (digits.length < 11) return;
+
+  const isValid = isValidCPF(cpfValue);
+  cpfStatus.textContent = isValid ? 'CPF válido' : 'CPF inválido';
+  cpfStatus.classList.add(isValid ? 'valid' : 'invalid');
 };
 
 const formatWhatsApp = (value) => {
@@ -2328,6 +2368,7 @@ if (vehicleNoPlateInput) {
 }
 cpfInput.addEventListener('input', (event) => {
   event.target.value = formatCPF(event.target.value);
+  updateCpfStatus(event.target.value);
 });
 whatsappInput.addEventListener('input', (event) => {
   event.target.value = formatWhatsApp(event.target.value);
