@@ -315,22 +315,20 @@ const drawRoundedRect = (context, x, y, width, height, radius) => {
 };
 
 const getPhotoOverlayLines = () => {
-  const now = new Date();
-  const timestamp = `${formatDateBr(formatDate(now))} ${formatTime(now)}`;
   const occurrence = (occurrenceNumberInput?.value || '--').trim() || '--';
   const location = (locationInput?.value || '--').trim() || '--';
-  const date = formatDateBr((dateInput?.value || '').trim()) || '--';
-  const time = (timeInput?.value || '--').trim() || '--';
+  const now = new Date();
+  const date = formatDateBr((dateInput?.value || '').trim()) || formatDateBr(formatDate(now));
+  const time = (timeInput?.value || '').trim() || formatTime(now);
   const agent = (agentSelect?.value || getLoggedAgentName() || '--').trim() || '--';
   const institution =
     (institutionInput?.value || getInstitutionLabel(getLoggedInstitutionKey()) || '--').trim() || '--';
 
   return [
-    `Timestamp: ${timestamp}`,
+    'Veículos na Praia Não',
     `Ocorrencia: ${occurrence}`,
+    `Data/Hora: ${date}, ${time}`,
     `Localizacao: ${location}`,
-    `Data: ${date}`,
-    `Hora: ${time}`,
     `Agente: ${agent}`,
     `Instituicao: ${institution}`,
   ];
