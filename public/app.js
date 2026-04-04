@@ -299,6 +299,79 @@ const formatTime = (date) => {
   return `${hours}:${minutes}`;
 };
 
+const drawRoundedRect = (context, x, y, width, height, radius) => {
+  const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+};
+
+const getPhotoOverlayLines = () => {
+  const now = new Date();
+  const timestamp = `${formatDateBr(formatDate(now))} ${formatTime(now)}`;
+  const occurrence = (occurrenceNumberInput?.value || '--').trim() || '--';
+  const location = (locationInput?.value || '--').trim() || '--';
+  const date = formatDateBr((dateInput?.value || '').trim()) || '--';
+  const time = (timeInput?.value || '--').trim() || '--';
+  const agent = (agentSelect?.value || getLoggedAgentName() || '--').trim() || '--';
+  const institution =
+    (institutionInput?.value || getInstitutionLabel(getLoggedInstitutionKey()) || '--').trim() || '--';
+
+  return [
+    `Timestamp: ${timestamp}`,
+    `Ocorrencia: ${occurrence}`,
+    `Localizacao: ${location}`,
+    `Data: ${date}`,
+    `Hora: ${time}`,
+    `Agente: ${agent}`,
+    `Instituicao: ${institution}`,
+  ];
+};
+
+const drawPhotoMetadataOverlay = (context, imageWidth, imageHeight) => {
+  const lines = getPhotoOverlayLines();
+  if (!lines.length) return;
+
+  const baseFontSize = Math.max(17, Math.round(imageWidth * 0.018));
+  const lineHeight = Math.round(baseFontSize * 1.25);
+  const padding = Math.round(baseFontSize * 0.7);
+  const margin = Math.round(baseFontSize * 0.8);
+  const boxRadius = Math.max(8, Math.round(baseFontSize * 0.5));
+
+  context.save();
+  context.font = `700 ${baseFontSize}px Inter, Arial, sans-serif`;
+
+  const maxTextWidth = lines.reduce(
+    (maxWidth, line) => Math.max(maxWidth, context.measureText(line).width),
+    0
+  );
+
+  const boxWidth = Math.min(imageWidth - margin * 2, Math.ceil(maxTextWidth + padding * 2));
+  const boxHeight = Math.ceil(lines.length * lineHeight + padding * 2);
+  const boxX = margin;
+  const boxY = margin;
+
+  drawRoundedRect(context, boxX, boxY, boxWidth, boxHeight, boxRadius);
+  context.fillStyle = 'rgba(0, 0, 0, 0.58)';
+  context.fill();
+
+  context.fillStyle = '#ffffff';
+  context.textBaseline = 'top';
+  lines.forEach((line, index) => {
+    context.fillText(line, boxX + padding, boxY + padding + index * lineHeight);
+  });
+
+  context.restore();
+};
+
 const generateUniqueOccurrenceNumber = () => {
   let randomNum;
   do {
@@ -952,8 +1025,12 @@ const getCurrentLocation = () => {
 
 const openFullscreenCamera = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: cameraFacingMode }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: cameraFacingMode },
+        width: { ideal: 2560 },
+        height: { ideal: 1440 },
+      },
     });
     fullscreenCameraPreview.srcObject = stream;
     fullscreenCameraModal.classList.remove('hidden');
@@ -984,8 +1061,9 @@ const captureFullscreenPhoto = async () => {
   canvas.height = fullscreenCameraPreview.videoHeight;
   const context = canvas.getContext('2d');
   context.drawImage(fullscreenCameraPreview, 0, 0, canvas.width, canvas.height);
+  drawPhotoMetadataOverlay(context, canvas.width, canvas.height);
 
-  const photoDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+  const photoDataUrl = canvas.toDataURL('image/jpeg', 0.98);
   addPhotoPreview(photoDataUrl, 'camera_' + new Date().getTime() + '.jpg');
   
   closeFullscreenCamera();
