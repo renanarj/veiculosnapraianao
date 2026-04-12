@@ -2429,7 +2429,7 @@ const generateActivityReportPDF = () => {
       doc.setFontSize(7);
       doc.setTextColor(100, 100, 100);
       doc.text(
-        'Documento gerado automaticamente pelo Sistema de Fiscalização da APA Delta do Parnaíba',
+          'Documento gerado automaticamente pela aplicação Veículos na Praia Não - APA Delta do Parnaíba',
         pageWidth / 2,
         204,
         { align: 'center' }
