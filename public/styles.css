@@ -1518,18 +1518,39 @@ body {
 
 .activity-agent-add {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: flex-start;
 }
 
+.activity-agent-add select {
+  width: 100%;
+  max-width: 360px;
+  margin-bottom: 0;
+}
+
 .activity-agent-add input {
   flex: 1;
+  min-width: 240px;
   margin-bottom: 0;
 }
 
 .add-agent-btn {
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .activity-agent-add {
+    flex-direction: column;
+  }
+
+  .activity-agent-add select,
+  .activity-agent-add input,
+  .add-agent-btn {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 
 .activity-records-summary {

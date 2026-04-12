@@ -96,6 +96,7 @@ const openActivityReportBtn = document.getElementById('openActivityReportBtn');
 const backToDashboardFromActivity = document.getElementById('backToDashboardFromActivity');
 const activityReportDateInput = document.getElementById('activityReportDate');
 const activityAgentsListEl = document.getElementById('activityAgentsList');
+const activityAgentInstitutionSelect = document.getElementById('activityAgentInstitution');
 const activityAgentInput = document.getElementById('activityAgentInput');
 const addActivityAgentBtn = document.getElementById('addActivityAgentBtn');
 const generateActivityReportBtn = document.getElementById('generateActivityReportBtn');
@@ -2226,14 +2227,57 @@ const getFilteredRecords = () => applyFilters(allRecords);
 // ─── Relatório de Atividade ───────────────────────────────────────────────────
 let activityAgents = [];
 
+const normalizeUpperText = (value) =>
+  (value || '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getInstitutionShortName = (institutionLabel) => {
+  const normalizedInstitution = normalizeText(institutionLabel);
+  if (normalizedInstitution.includes('chico mendes')) return 'ICMBIO';
+  if (normalizedInstitution.includes('policia militar')) return 'PMPI';
+  if (normalizedInstitution.includes('secretaria de meio ambiente')) return 'SEMARH';
+  if (normalizedInstitution.includes('prefeitura municipal')) return 'PREFEITURA';
+  return normalizeUpperText(institutionLabel || '--');
+};
+
+const populateActivityInstitutionOptions = () => {
+  if (!activityAgentInstitutionSelect) return;
+  const selected = activityAgentInstitutionSelect.value;
+  const allInstitutions = Array.from(
+    new Set([
+      ...Object.values(institutions),
+      ...allRecords.map((record) => (record.institution || '').trim()).filter(Boolean),
+    ])
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  activityAgentInstitutionSelect.innerHTML = '';
+  allInstitutions.forEach((institutionLabel) => {
+    const option = document.createElement('option');
+    option.value = institutionLabel;
+    option.textContent = institutionLabel;
+    activityAgentInstitutionSelect.appendChild(option);
+  });
+
+  if (selected && allInstitutions.includes(selected)) {
+    activityAgentInstitutionSelect.value = selected;
+  }
+};
+
 const populateActivityAgentDatalist = () => {
   if (!activityAgentDatalist) return;
+  const selectedInstitution = activityAgentInstitutionSelect?.value || '';
   activityAgentDatalist.innerHTML = '';
   const allAgents = Array.from(
     new Set([
-      ...icmbioAgents,
-      ...allRecords.map((r) => (r.agent || '').trim()).filter(Boolean),
+      ...(selectedInstitution === institutions.icmbio ? icmbioAgents : []),
+      ...allRecords
+        .filter((record) => !selectedInstitution || (record.institution || '').trim() === selectedInstitution)
+        .map((record) => (record.agent || '').trim())
+        .filter(Boolean),
     ])
+      .map((name) => normalizeUpperText(name))
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   allAgents.forEach((name) => {
     const opt = document.createElement('option');
@@ -2249,10 +2293,12 @@ const renderActivityAgentsList = () => {
     activityAgentsListEl.innerHTML = '<span class="activity-no-agents">Nenhum agente adicionado.</span>';
     return;
   }
-  activityAgents.forEach((name, idx) => {
+  activityAgents.forEach((agentEntry, idx) => {
     const tag = document.createElement('span');
     tag.className = 'activity-agent-tag';
-    tag.innerHTML = `${name} <button type="button" class="activity-agent-remove" aria-label="Remover ${name}" data-idx="${idx}">×</button>`;
+    const institutionShort = getInstitutionShortName(agentEntry.institution);
+    const agentName = normalizeUpperText(agentEntry.name);
+    tag.innerHTML = `${institutionShort}: ${agentName} <button type="button" class="activity-agent-remove" aria-label="Remover ${agentName}" data-idx="${idx}">×</button>`;
     activityAgentsListEl.appendChild(tag);
   });
   activityAgentsListEl.querySelectorAll('.activity-agent-remove').forEach((btn) => {
@@ -2277,8 +2323,15 @@ const updateActivityRecordsSummary = () => {
 
 const openActivityReportView = () => {
   activityAgents = [];
-  const loggedAgent = getLoggedAgentName();
-  if (loggedAgent) activityAgents.push(loggedAgent);
+  const loggedAgent = normalizeUpperText(getLoggedAgentName());
+  const loggedInstitution = getInstitutionLabel(getLoggedInstitutionKey()) || institutions.icmbio;
+  populateActivityInstitutionOptions();
+  if (activityAgentInstitutionSelect && loggedInstitution) {
+    activityAgentInstitutionSelect.value = loggedInstitution;
+  }
+  if (loggedAgent) {
+    activityAgents.push({ name: loggedAgent, institution: loggedInstitution });
+  }
   if (activityReportDateInput) activityReportDateInput.value = formatDate(new Date());
   populateActivityAgentDatalist();
   renderActivityAgentsList();
@@ -2358,7 +2411,9 @@ const generateActivityReportPDF = () => {
 
   // Agentes
   if (activityAgents.length > 0) {
-    const agentsLabel = `Agente(s) responsável(is): ${activityAgents.join('  |  ')}`;
+    const agentsLabel = `Agente(s) responsável(is): ${activityAgents
+      .map((entry) => `${getInstitutionShortName(entry.institution)}: ${normalizeUpperText(entry.name)}`)
+      .join('  |  ')}`;
     const agentsLines = doc.splitTextToSize(agentsLabel, pageWidth - marginLeft - marginRight);
     doc.setFont('helvetica', 'bold');
     agentsLines.forEach((line) => {
@@ -2769,13 +2824,17 @@ if (backToDashboardFromActivity) {
 
 if (addActivityAgentBtn) {
   addActivityAgentBtn.addEventListener('click', () => {
-    const val = (activityAgentInput.value || '').trim().toUpperCase();
-    if (!val) return;
-    if (activityAgents.includes(val)) {
+    const agentName = normalizeUpperText(activityAgentInput.value || '');
+    const institutionLabel = (activityAgentInstitutionSelect?.value || '').trim();
+    if (!agentName || !institutionLabel) return;
+    const alreadyAdded = activityAgents.some(
+      (entry) => normalizeUpperText(entry.name) === agentName && (entry.institution || '').trim() === institutionLabel
+    );
+    if (alreadyAdded) {
       activityAgentInput.value = '';
       return;
     }
-    activityAgents.push(val);
+    activityAgents.push({ name: agentName, institution: institutionLabel });
     activityAgentInput.value = '';
     renderActivityAgentsList();
   });
@@ -2795,6 +2854,10 @@ if (activityAgentInput) {
 
 if (activityReportDateInput) {
   activityReportDateInput.addEventListener('change', updateActivityRecordsSummary);
+}
+
+if (activityAgentInstitutionSelect) {
+  activityAgentInstitutionSelect.addEventListener('change', populateActivityAgentDatalist);
 }
 
 if (generateActivityReportBtn) {
