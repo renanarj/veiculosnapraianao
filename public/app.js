@@ -2277,8 +2277,9 @@ const populateActivityAgentDatalist = () => {
         .map((record) => (record.agent || '').trim())
         .filter(Boolean),
     ])
-      .map((name) => normalizeUpperText(name))
-  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  )
+    .map((name) => normalizeUpperText(name))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   allAgents.forEach((name) => {
     const opt = document.createElement('option');
     opt.value = name;
