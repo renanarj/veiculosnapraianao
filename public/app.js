@@ -92,6 +92,15 @@ const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
 const photoModal = document.getElementById('photoModal');
 const photoModalImage = document.getElementById('photoModalImage');
 const photoModalClose = document.getElementById('photoModalClose');
+const openActivityReportBtn = document.getElementById('openActivityReportBtn');
+const backToDashboardFromActivity = document.getElementById('backToDashboardFromActivity');
+const activityReportDateInput = document.getElementById('activityReportDate');
+const activityAgentsListEl = document.getElementById('activityAgentsList');
+const activityAgentInput = document.getElementById('activityAgentInput');
+const addActivityAgentBtn = document.getElementById('addActivityAgentBtn');
+const generateActivityReportBtn = document.getElementById('generateActivityReportBtn');
+const activityRecordsSummary = document.getElementById('activityRecordsSummary');
+const activityAgentDatalist = document.getElementById('activityAgentDatalist');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -2214,6 +2223,226 @@ const sharePDF = async (index) => {
 
 const getFilteredRecords = () => applyFilters(allRecords);
 
+// ─── Relatório de Atividade ───────────────────────────────────────────────────
+let activityAgents = [];
+
+const populateActivityAgentDatalist = () => {
+  if (!activityAgentDatalist) return;
+  activityAgentDatalist.innerHTML = '';
+  const allAgents = Array.from(
+    new Set([
+      ...icmbioAgents,
+      ...allRecords.map((r) => (r.agent || '').trim()).filter(Boolean),
+    ])
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  allAgents.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    activityAgentDatalist.appendChild(opt);
+  });
+};
+
+const renderActivityAgentsList = () => {
+  if (!activityAgentsListEl) return;
+  activityAgentsListEl.innerHTML = '';
+  if (activityAgents.length === 0) {
+    activityAgentsListEl.innerHTML = '<span class="activity-no-agents">Nenhum agente adicionado.</span>';
+    return;
+  }
+  activityAgents.forEach((name, idx) => {
+    const tag = document.createElement('span');
+    tag.className = 'activity-agent-tag';
+    tag.innerHTML = `${name} <button type="button" class="activity-agent-remove" aria-label="Remover ${name}" data-idx="${idx}">×</button>`;
+    activityAgentsListEl.appendChild(tag);
+  });
+  activityAgentsListEl.querySelectorAll('.activity-agent-remove').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.idx);
+      activityAgents.splice(idx, 1);
+      renderActivityAgentsList();
+    });
+  });
+};
+
+const updateActivityRecordsSummary = () => {
+  if (!activityRecordsSummary || !activityReportDateInput) return;
+  const dateVal = activityReportDateInput.value;
+  if (!dateVal) {
+    activityRecordsSummary.innerHTML = '';
+    return;
+  }
+  const dayRecords = allRecords.filter((r) => r.date === dateVal);
+  activityRecordsSummary.innerHTML = `<p class="activity-summary-info">Ocorrências registradas em <strong>${formatDateBr(dateVal)}</strong>: <strong>${dayRecords.length}</strong></p>`;
+};
+
+const openActivityReportView = () => {
+  activityAgents = [];
+  const loggedAgent = getLoggedAgentName();
+  if (loggedAgent) activityAgents.push(loggedAgent);
+  if (activityReportDateInput) activityReportDateInput.value = formatDate(new Date());
+  populateActivityAgentDatalist();
+  renderActivityAgentsList();
+  updateActivityRecordsSummary();
+  showView('activityReportView');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const generateActivityReportPDF = () => {
+  if (!activityReportDateInput) return;
+  const dateVal = activityReportDateInput.value;
+  if (!dateVal) {
+    alert('Selecione a data da atividade.');
+    return;
+  }
+  const dayRecords = allRecords
+    .filter((r) => r.date === dateVal)
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  if (dayRecords.length === 0) {
+    alert(`Nenhuma ocorrência registrada em ${formatDateBr(dateVal)}.`);
+    return;
+  }
+  if (!jsPDF) {
+    alert('Biblioteca jsPDF não carregada.');
+    return;
+  }
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = 297;
+  const marginLeft = 10;
+  const marginRight = 10;
+  let yPos = 10;
+
+  // Brasão da república
+  try {
+    const brasaoSize = 18;
+    doc.addImage(
+      '/Brasão da república quadrado.png',
+      'PNG',
+      (pageWidth - brasaoSize) / 2,
+      yPos - 3,
+      brasaoSize,
+      brasaoSize
+    );
+  } catch (_) {}
+  yPos += 22;
+
+  // Cabeçalho institucional (mesmo dos demais relatórios)
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text('MINISTÉRIO DO MEIO AMBIENTE E MUDANÇA DO CLIMA', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 5;
+  doc.text('INSTITUTO CHICO MENDES DE CONSERVAÇÃO DA BIODIVERSIDADE', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 5;
+  doc.text('ÁREA DE PROTEÇÃO AMBIENTAL DELTA DO PARNAÍBA', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 9;
+
+  // Separador
+  doc.setDrawColor(0, 69, 33);
+  doc.setLineWidth(0.5);
+  doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
+  yPos += 7;
+
+  // Título do relatório
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RELATÓRIO DE ATIVIDADE — VEÍCULOS NA PRAIA NÃO', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 7;
+
+  // Data e total de ocorrências
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Data da Atividade: ${formatDateBr(dateVal)}`, marginLeft, yPos);
+  doc.text(`Total de ocorrências: ${dayRecords.length}`, pageWidth / 2, yPos, { align: 'center' });
+  yPos += 6;
+
+  // Agentes
+  if (activityAgents.length > 0) {
+    const agentsLabel = `Agente(s) responsável(is): ${activityAgents.join('  |  ')}`;
+    const agentsLines = doc.splitTextToSize(agentsLabel, pageWidth - marginLeft - marginRight);
+    doc.setFont('helvetica', 'bold');
+    agentsLines.forEach((line) => {
+      doc.text(line, marginLeft, yPos);
+      yPos += 5;
+    });
+  }
+  yPos += 4;
+
+  // Linha separadora antes da tabela
+  doc.setDrawColor(0, 69, 33);
+  doc.setLineWidth(0.3);
+  doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
+  yPos += 4;
+
+  // Tabela de ocorrências (estilo planilha)
+  const tableColumns = [
+    { header: 'Nº Ocorr.', dataKey: 'occurrenceNumber' },
+    { header: 'Hora', dataKey: 'time' },
+    { header: 'Condutor', dataKey: 'infractorName' },
+    { header: 'CPF', dataKey: 'infractorDoc' },
+    { header: 'WhatsApp', dataKey: 'whatsapp' },
+    { header: 'Placa', dataKey: 'vehiclePlate' },
+    { header: 'Modelo / Cor / Ano', dataKey: 'vehicle' },
+    { header: 'Agente', dataKey: 'agent' },
+    { header: 'Instituição', dataKey: 'institution' },
+    { header: 'Local', dataKey: 'location' },
+    { header: 'Observações', dataKey: 'observations' },
+  ];
+
+  const tableRows = dayRecords.map((r) => ({
+    occurrenceNumber: r.occurrenceNumber || '--',
+    time: r.time || '--',
+    infractorName: r.infractorName || '--',
+    infractorDoc: r.infractorDoc || '--',
+    whatsapp: r.whatsapp || '--',
+    vehiclePlate: r.vehiclePlate || '--',
+    vehicle: [r.vehicleModel, r.vehicleColor, r.vehicleYear].filter(Boolean).join(' / ') || '--',
+    agent: r.agent || '--',
+    institution: (r.institution || '--').replace('Instituto Chico Mendes de Conservação da Biodiversidade', 'ICMBio').replace('Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí', 'SEMARH').replace('Polícia Militar do Estado do Piauí', 'PMPI').replace('Prefeitura Municipal de Luís Correia', 'Prefeitura'),
+    location: r.location || '--',
+    observations: r.observations || '',
+  }));
+
+  doc.autoTable({
+    startY: yPos,
+    columns: tableColumns,
+    body: tableRows,
+    margin: { left: marginLeft, right: marginRight },
+    styles: { fontSize: 6.5, cellPadding: { top: 2, right: 2, bottom: 2, left: 2 }, overflow: 'linebreak', valign: 'top' },
+    headStyles: { fillColor: [0, 69, 33], textColor: 255, fontStyle: 'bold', fontSize: 7 },
+    alternateRowStyles: { fillColor: [240, 248, 228] },
+    columnStyles: {
+      0: { cellWidth: 18 },  // Nº Ocorrência
+      1: { cellWidth: 10 },  // Hora
+      2: { cellWidth: 32 },  // Condutor
+      3: { cellWidth: 22 },  // CPF
+      4: { cellWidth: 22 },  // WhatsApp
+      5: { cellWidth: 16 },  // Placa
+      6: { cellWidth: 28 },  // Modelo/Cor/Ano
+      7: { cellWidth: 28 },  // Agente
+      8: { cellWidth: 18 },  // Instituição
+      9: { cellWidth: 42 },  // Local
+      10: { cellWidth: 'auto' }, // Observações
+    },
+    didDrawPage: (data) => {
+      // Rodapé em cada página
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      doc.text(
+        'Documento gerado automaticamente pelo Sistema de Fiscalização da APA Delta do Parnaíba',
+        pageWidth / 2,
+        204,
+        { align: 'center' }
+      );
+      doc.setTextColor(0, 0, 0);
+    },
+  });
+
+  const dateFormatted = dateVal.replace(/-/g, '');
+  doc.save(`Relatorio_Atividade_${dateFormatted}.pdf`);
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const getReportTitle = () => {
   const months = [
     'Janeiro',
@@ -2528,3 +2757,47 @@ if (loginAgentCustom) {
     event.target.value = event.target.value.toUpperCase();
   });
 }
+
+// ─── Event listeners – Relatório de Atividade ────────────────────────────────
+if (openActivityReportBtn) {
+  openActivityReportBtn.addEventListener('click', openActivityReportView);
+}
+
+if (backToDashboardFromActivity) {
+  backToDashboardFromActivity.addEventListener('click', () => showView('dashboardView'));
+}
+
+if (addActivityAgentBtn) {
+  addActivityAgentBtn.addEventListener('click', () => {
+    const val = (activityAgentInput.value || '').trim().toUpperCase();
+    if (!val) return;
+    if (activityAgents.includes(val)) {
+      activityAgentInput.value = '';
+      return;
+    }
+    activityAgents.push(val);
+    activityAgentInput.value = '';
+    renderActivityAgentsList();
+  });
+}
+
+if (activityAgentInput) {
+  activityAgentInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addActivityAgentBtn && addActivityAgentBtn.click();
+    }
+  });
+  activityAgentInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+  });
+}
+
+if (activityReportDateInput) {
+  activityReportDateInput.addEventListener('change', updateActivityRecordsSummary);
+}
+
+if (generateActivityReportBtn) {
+  generateActivityReportBtn.addEventListener('click', generateActivityReportPDF);
+}
+// ─────────────────────────────────────────────────────────────────────────────

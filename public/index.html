@@ -189,6 +189,7 @@
 
           <div class="dashboard-actions">
             <button type="button" id="openFormBtn" class="floating-btn">Novo registro</button>
+            <button type="button" id="openActivityReportBtn" class="ghost-btn">Relatório de Atividade</button>
           </div>
         </section>
 
@@ -398,6 +399,37 @@
               <a id="recordPdfLink" class="ghost-btn" href="#" target="_blank" rel="noopener">Baixar PDF</a>
             </div>
             <div id="recordPhotos" class="record-photo-grid"></div>
+          </div>
+        </section>
+
+        <section id="activityReportView" class="view hidden">
+          <div class="dashboard-actions">
+            <button type="button" id="backToDashboardFromActivity" class="ghost-btn">← Voltar ao dashboard</button>
+          </div>
+          <div class="card">
+            <h3>Relatório de Atividade</h3>
+            <p style="color: #4a6030; margin-bottom: 18px; font-size: 0.95rem;">Selecione a data e informe os agentes que participaram da atividade. O relatório PDF será gerado com todas as ocorrências do dia em formato de planilha.</p>
+
+            <div class="form-group">
+              <label for="activityReportDate">Data da Atividade</label>
+              <input type="date" id="activityReportDate" />
+            </div>
+
+            <div class="form-group">
+              <label>Agentes na Atividade</label>
+              <div id="activityAgentsList" class="activity-agents-list"></div>
+              <div class="activity-agent-add">
+                <input type="text" id="activityAgentInput" list="activityAgentDatalist" placeholder="Nome do agente" autocomplete="off" />
+                <datalist id="activityAgentDatalist"></datalist>
+                <button type="button" id="addActivityAgentBtn" class="ghost-btn add-agent-btn">+ Adicionar Agente</button>
+              </div>
+            </div>
+
+            <div id="activityRecordsSummary" class="activity-records-summary"></div>
+
+            <div class="buttons-container" style="margin-top: 20px;">
+              <button type="button" id="generateActivityReportBtn">🖨 Gerar Relatório PDF da Atividade</button>
+            </div>
           </div>
         </section>
       </main>
