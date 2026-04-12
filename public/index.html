@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div id="loginScreen" class="auth-screen">
@@ -176,6 +177,32 @@
             <div class="card">
               <h3>Condutores reincidentes</h3>
               <div id="duplicateDriversList" class="stat-list"></div>
+            </div>
+
+            <div class="card">
+              <h3>Gráficos Automáticos</h3>
+              <div class="dashboard-charts-grid">
+                <div class="chart-card">
+                  <h4>Ocorrências por Dia</h4>
+                  <div class="chart-wrap"><canvas id="chartByDay"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h4>Ocorrências por Instituição</h4>
+                  <div class="chart-wrap"><canvas id="chartByInstitution"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h4>Top Agentes (Registros)</h4>
+                  <div class="chart-wrap"><canvas id="chartByAgent"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h4>Top Locais</h4>
+                  <div class="chart-wrap"><canvas id="chartByLocation"></canvas></div>
+                </div>
+                <div class="chart-card">
+                  <h4>Taxa de Reincidência</h4>
+                  <div class="chart-wrap"><canvas id="chartRecurrenceRate"></canvas></div>
+                </div>
+              </div>
             </div>
           </div>
 

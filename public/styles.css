@@ -1338,6 +1338,31 @@ body {
   font-size: 0.85rem;
 }
 
+.dashboard-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.chart-card {
+  border: 1px solid #dbe8d2;
+  border-radius: 12px;
+  background: #f9fcf4;
+  padding: 12px;
+}
+
+.chart-card h4 {
+  color: #1f3c1e;
+  font-size: 0.92rem;
+  margin-bottom: 8px;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 230px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

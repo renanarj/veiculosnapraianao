@@ -102,6 +102,11 @@ const addActivityAgentBtn = document.getElementById('addActivityAgentBtn');
 const generateActivityReportBtn = document.getElementById('generateActivityReportBtn');
 const activityRecordsSummary = document.getElementById('activityRecordsSummary');
 const activityAgentDatalist = document.getElementById('activityAgentDatalist');
+const chartByDay = document.getElementById('chartByDay');
+const chartByInstitution = document.getElementById('chartByInstitution');
+const chartByAgent = document.getElementById('chartByAgent');
+const chartByLocation = document.getElementById('chartByLocation');
+const chartRecurrenceRate = document.getElementById('chartRecurrenceRate');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -156,6 +161,15 @@ let db = null;
 let storage = null;
 let auth = null;
 let firestoreReadBlocked = false;
+const dashboardCharts = {
+  byDay: null,
+  byInstitution: null,
+  byAgent: null,
+  byLocation: null,
+  recurrenceRate: null,
+};
+
+const chartPalette = ['#588526', '#7ca136', '#9bc441', '#3f6f1d', '#b7d86b', '#2f5522', '#d9eab3'];
 
 document.addEventListener(
   'dblclick',
@@ -1401,6 +1415,186 @@ const renderStatList = (container, data, emptyMessage) => {
   });
 };
 
+const destroyDashboardChart = (chartKey) => {
+  if (dashboardCharts[chartKey]) {
+    dashboardCharts[chartKey].destroy();
+    dashboardCharts[chartKey] = null;
+  }
+};
+
+const formatChartDateLabel = (isoDate) => {
+  if (!isoDate) return '--';
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}`;
+};
+
+const getTopEntries = (entries, max = 10) =>
+  entries
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, max);
+
+const renderDashboardCharts = (filtered, duplicateMap) => {
+  if (!window.Chart) return;
+
+  const dateCountMap = filtered.reduce((acc, record) => {
+    const key = (record.date || '').trim();
+    if (!key) return acc;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const institutionCountMap = filtered.reduce((acc, record) => {
+    const key = (record.institution || 'Sem instituição').trim();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const agentCountMap = filtered.reduce((acc, record) => {
+    const key = (record.agent || 'Sem agente').trim();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const locationCountMap = filtered.reduce((acc, record) => {
+    const key = (record.location || 'Não informado').trim();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const uniqueDrivers = new Set(filtered.map((record) => getDriverKey(record)));
+  const recurrenceDrivers = Object.values(duplicateMap).filter((count) => count > 1).length;
+  const nonRecurrenceDrivers = Math.max(uniqueDrivers.size - recurrenceDrivers, 0);
+
+  destroyDashboardChart('byDay');
+  destroyDashboardChart('byInstitution');
+  destroyDashboardChart('byAgent');
+  destroyDashboardChart('byLocation');
+  destroyDashboardChart('recurrenceRate');
+
+  if (chartByDay) {
+    const byDayEntries = Object.entries(dateCountMap).sort((a, b) => a[0].localeCompare(b[0]));
+    dashboardCharts.byDay = new window.Chart(chartByDay, {
+      type: 'line',
+      data: {
+        labels: byDayEntries.map(([dateKey]) => formatChartDateLabel(dateKey)),
+        datasets: [
+          {
+            label: 'Ocorrências',
+            data: byDayEntries.map(([, value]) => value),
+            borderColor: '#588526',
+            backgroundColor: 'rgba(88, 133, 38, 0.18)',
+            tension: 0.25,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  if (chartByInstitution) {
+    const byInstitutionEntries = getTopEntries(Object.entries(institutionCountMap), 8);
+    dashboardCharts.byInstitution = new window.Chart(chartByInstitution, {
+      type: 'doughnut',
+      data: {
+        labels: byInstitutionEntries.map(([label]) => label),
+        datasets: [
+          {
+            data: byInstitutionEntries.map(([, value]) => value),
+            backgroundColor: chartPalette,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+      },
+    });
+  }
+
+  if (chartByAgent) {
+    const byAgentEntries = getTopEntries(Object.entries(agentCountMap), 10);
+    dashboardCharts.byAgent = new window.Chart(chartByAgent, {
+      type: 'bar',
+      data: {
+        labels: byAgentEntries.map(([label]) => label),
+        datasets: [
+          {
+            label: 'Registros',
+            data: byAgentEntries.map(([, value]) => value),
+            backgroundColor: '#6f9a2f',
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  if (chartByLocation) {
+    const byLocationEntries = getTopEntries(Object.entries(locationCountMap), 10);
+    dashboardCharts.byLocation = new window.Chart(chartByLocation, {
+      type: 'bar',
+      data: {
+        labels: byLocationEntries.map(([label]) => label),
+        datasets: [
+          {
+            label: 'Ocorrências',
+            data: byLocationEntries.map(([, value]) => value),
+            backgroundColor: '#4e7d24',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  if (chartRecurrenceRate) {
+    dashboardCharts.recurrenceRate = new window.Chart(chartRecurrenceRate, {
+      type: 'doughnut',
+      data: {
+        labels: ['Reincidentes', 'Não reincidentes'],
+        datasets: [
+          {
+            data: [recurrenceDrivers, nonRecurrenceDrivers],
+            backgroundColor: ['#9a3412', '#588526'],
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const total = recurrenceDrivers + nonRecurrenceDrivers;
+                const value = context.parsed || 0;
+                const pct = total ? ((value * 100) / total).toFixed(1) : '0.0';
+                return `${context.label}: ${value} (${pct}%)`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+};
+
 const renderDriversList = (records) => {
   if (!driversList) return;
   driversList.innerHTML = '';
@@ -1598,6 +1792,7 @@ const updateDashboard = () => {
   renderStatList(byAgentList, byAgent, 'Nenhum registro no período.');
   renderStatList(byMonthList, byMonth, 'Nenhum registro no período.');
   renderStatList(duplicateDriversList, duplicateDrivers, 'Nenhum reincidente no período.');
+  renderDashboardCharts(filtered, duplicateMap);
   renderDriversList(filtered);
 };
 
@@ -2787,6 +2982,9 @@ if (toggleFiltersBtn && dashboardFiltersPanel) {
   toggleFiltersBtn.addEventListener('click', () => {
     const isHidden = dashboardFiltersPanel.classList.toggle('hidden');
     toggleFiltersBtn.textContent = isHidden ? 'Mostrar filtros' : 'Ocultar filtros';
+    if (!isHidden) {
+      updateDashboard();
+    }
   });
 }
 
