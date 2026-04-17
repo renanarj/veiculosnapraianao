@@ -26,6 +26,35 @@ const alertError = document.getElementById('alertError');
 const uploadPhotoBtn = document.getElementById('uploadPhoto');
 const photosInput = document.getElementById('photosInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
+const entryScreen = document.getElementById('entryScreen');
+const openPublicReportBtn = document.getElementById('openPublicReportBtn');
+const openLoginBtn = document.getElementById('openLoginBtn');
+const publicReportScreen = document.getElementById('publicReportScreen');
+const backFromPublicReportBtn = document.getElementById('backFromPublicReportBtn');
+const publicReportForm = document.getElementById('publicReportForm');
+const publicDateInput = document.getElementById('publicDate');
+const publicTimeInput = document.getElementById('publicTime');
+const publicLocationInput = document.getElementById('publicLocation');
+const publicGetLocationBtn = document.getElementById('publicGetLocationBtn');
+const publicLocationError = document.getElementById('publicLocationError');
+const publicVehiclePlateInput = document.getElementById('publicVehiclePlate');
+const publicVehicleModelInput = document.getElementById('publicVehicleModel');
+const publicVehicleColorInput = document.getElementById('publicVehicleColor');
+const publicVehicleYearInput = document.getElementById('publicVehicleYear');
+const publicInfractorNameInput = document.getElementById('publicInfractorName');
+const publicInfractorDocInput = document.getElementById('publicInfractorDoc');
+const publicObservationsInput = document.getElementById('publicObservations');
+const publicReporterContactInput = document.getElementById('publicReporterContact');
+const publicReportPhotosInput = document.getElementById('publicReportPhotos');
+const publicReportPhotoPreview = document.getElementById('publicReportPhotoPreview');
+const publicReportConsentInput = document.getElementById('publicReportConsent');
+const submitPublicReportBtn = document.getElementById('submitPublicReportBtn');
+const publicReportSuccess = document.getElementById('publicReportSuccess');
+const publicReportError = document.getElementById('publicReportError');
+const publicSavingOverlay = document.getElementById('publicSavingOverlay');
+const publicSavingStepText = document.getElementById('publicSavingStepText');
+const publicSavingProgressBar = document.getElementById('publicSavingProgressBar');
+const publicSavingProgressPercent = document.getElementById('publicSavingProgressPercent');
 const fullscreenCameraModal = document.getElementById('fullscreenCameraModal');
 const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview');
 const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
@@ -67,7 +96,9 @@ const filterDuplicates = document.getElementById('filterDuplicates');
 const applyFiltersBtn = document.getElementById('applyFiltersBtn');
 const clearFiltersBtn = document.getElementById('clearFiltersBtn');
 const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
+const toggleChartsBtn = document.getElementById('toggleChartsBtn');
 const dashboardFiltersPanel = document.getElementById('dashboardFiltersPanel');
+const dashboardChartsPanel = document.getElementById('dashboardChartsPanel');
 const byAgentList = document.getElementById('byAgentList');
 const byMonthList = document.getElementById('byMonthList');
 const duplicateDriversList = document.getElementById('duplicateDriversList');
@@ -82,6 +113,7 @@ const savingStepText = document.getElementById('savingStepText');
 const savingProgressBar = document.getElementById('savingProgressBar');
 const savingProgressPercent = document.getElementById('savingProgressPercent');
 const actionUnavailableModal = document.getElementById('actionUnavailableModal');
+const actionUnavailableTitle = document.getElementById('actionUnavailableTitle');
 const actionUnavailableMessage = document.getElementById('actionUnavailableMessage');
 const actionUnavailableOkBtn = document.getElementById('actionUnavailableOkBtn');
 const deleteConfirmModal = document.getElementById('deleteConfirmModal');
@@ -102,6 +134,9 @@ const addActivityAgentBtn = document.getElementById('addActivityAgentBtn');
 const generateActivityReportBtn = document.getElementById('generateActivityReportBtn');
 const activityRecordsSummary = document.getElementById('activityRecordsSummary');
 const activityAgentDatalist = document.getElementById('activityAgentDatalist');
+const activityPhotoInput = document.getElementById('activityPhotoInput');
+const activityPhotoList = document.getElementById('activityPhotoList');
+const activityFieldNotesInput = document.getElementById('activityFieldNotes');
 const chartByDay = document.getElementById('chartByDay');
 const chartByInstitution = document.getElementById('chartByInstitution');
 const chartByAgent = document.getElementById('chartByAgent');
@@ -112,8 +147,10 @@ let allRecords = [];
 let currentlyEditingIndex = -1;
 let stream = null;
 let photosData = [];
+let publicReportPhotos = [];
 let pendingDeleteIndex = -1;
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
+let popupCloseCallback = null;
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
@@ -142,7 +179,7 @@ const icmbioAgents = [
   'CONTINGÊNCIA',
 ];
 
-const scriptUrl = 'https://script.google.com/macros/s/AKfycbw9xovlmTNVycTNjDz8PIyKkEMVQZm40pb8NeBkgv3mwock9AAZh29ZnY03JksHfaFr9A/exec';
+const scriptUrl = 'https://script.google.com/macros/s/AKfycbzJpr-m8DxagIiZzr5bCRx42v3y02ieN8i8AxDJHAHuDianCG5Az4vRduIqsgS49EM18g/exec';
 const firebaseConfig = {
   apiKey: 'AIzaSyAh3dTQ4EeibeakaiCE5fTUpDxplrJDFK4',
   authDomain: 'veiculosnapraianao.firebaseapp.com',
@@ -271,6 +308,31 @@ const getRecordTimestamp = (record) => {
   const parsed = new Date(`${dateValue}T${timeValue}`);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.getTime();
+};
+
+const getFirestoreDateValue = (value) => {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') {
+    const dateObj = value.toDate();
+    return Number.isFinite(dateObj?.getTime?.()) ? dateObj.getTime() : null;
+  }
+  if (value?.seconds && Number.isFinite(value.seconds)) {
+    return value.seconds * 1000;
+  }
+  if (typeof value === 'string' || value instanceof Date || typeof value === 'number') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const getRecordCreatedAtTimestamp = (record) => {
+  const candidates = [record?.timestamp, record?.createdAt, record?.createdAtLocal, record?.updatedAt];
+  for (const candidate of candidates) {
+    const parsed = getFirestoreDateValue(candidate);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 };
 
 const hasValidRecurrence = (records) => {
@@ -542,6 +604,8 @@ const populateMonthYearFilters = () => {
 };
 
 const setLoggedUser = (agentName, institutionKey) => {
+  if (entryScreen) entryScreen.classList.add('hidden');
+  if (publicReportScreen) publicReportScreen.classList.add('hidden');
   localStorage.setItem(sessionKey, agentName);
   localStorage.setItem(sessionInstitutionKey, institutionKey);
   loginScreen.classList.add('hidden');
@@ -555,11 +619,31 @@ const setLoggedUser = (agentName, institutionKey) => {
   updateAgentName();
 };
 
+const showEntryScreen = () => {
+  if (entryScreen) entryScreen.classList.remove('hidden');
+  if (publicReportScreen) publicReportScreen.classList.add('hidden');
+  if (loginScreen) loginScreen.classList.add('hidden');
+  if (appShell) appShell.classList.add('hidden');
+};
+
+const showLoginScreen = () => {
+  if (entryScreen) entryScreen.classList.add('hidden');
+  if (publicReportScreen) publicReportScreen.classList.add('hidden');
+  if (loginScreen) loginScreen.classList.remove('hidden');
+  if (appShell) appShell.classList.add('hidden');
+};
+
+const showPublicReportScreen = () => {
+  if (entryScreen) entryScreen.classList.add('hidden');
+  if (loginScreen) loginScreen.classList.add('hidden');
+  if (publicReportScreen) publicReportScreen.classList.remove('hidden');
+  if (appShell) appShell.classList.add('hidden');
+};
+
 const clearSession = () => {
   localStorage.removeItem(sessionKey);
   localStorage.removeItem(sessionInstitutionKey);
-  loginScreen.classList.remove('hidden');
-  appShell.classList.add('hidden');
+  showEntryScreen();
   loginPassword.value = '';
   loginInstitution.value = '';
   loginAgent.value = '';
@@ -925,9 +1009,17 @@ const showAlert = (element, message) => {
   }, 5000);
 };
 
-const showPopup = (message) => {
+const showPopup = (message, options = {}) => {
   if (!actionUnavailableModal || !actionUnavailableMessage) return;
+  const { title = 'Aviso', buttonLabel = 'Ok', onClose = null } = options;
+  popupCloseCallback = typeof onClose === 'function' ? onClose : null;
+  if (actionUnavailableTitle) {
+    actionUnavailableTitle.textContent = title;
+  }
   actionUnavailableMessage.textContent = message;
+  if (actionUnavailableOkBtn) {
+    actionUnavailableOkBtn.textContent = buttonLabel;
+  }
   actionUnavailableModal.classList.remove('hidden');
   document.body.classList.add('modal-open');
   if (actionUnavailableOkBtn) {
@@ -939,6 +1031,17 @@ const closePopup = () => {
   if (!actionUnavailableModal) return;
   actionUnavailableModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
+  if (actionUnavailableTitle) {
+    actionUnavailableTitle.textContent = 'Aviso';
+  }
+  if (actionUnavailableOkBtn) {
+    actionUnavailableOkBtn.textContent = 'Ok';
+  }
+  if (popupCloseCallback) {
+    const callback = popupCloseCallback;
+    popupCloseCallback = null;
+    callback();
+  }
 };
 
 const openPhotoModal = (src, altText = 'Foto do veículo') => {
@@ -1200,6 +1303,230 @@ const handlePhotoUpload = (event) => {
   event.target.value = '';
 };
 
+const clearPublicReportForm = () => {
+  if (publicReportForm) publicReportForm.reset();
+  if (publicReportPhotoPreview) publicReportPhotoPreview.innerHTML = '';
+  if (publicLocationError) publicLocationError.textContent = '';
+  publicReportPhotos = [];
+  setPublicDateTimeNow();
+};
+
+const setPublicDateTimeNow = () => {
+  const now = new Date();
+  if (publicDateInput) {
+    publicDateInput.value = formatDate(now);
+  }
+  if (publicTimeInput) {
+    publicTimeInput.value = formatTime(now);
+  }
+};
+
+const setPublicSavingState = (isSaving) => {
+  if (!publicSavingOverlay) return;
+  publicSavingOverlay.classList.toggle('hidden', !isSaving);
+};
+
+const updatePublicSavingProgress = (percent, stepText) => {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (publicSavingProgressBar) {
+    publicSavingProgressBar.style.width = `${safePercent}%`;
+  }
+  if (publicSavingProgressPercent) {
+    publicSavingProgressPercent.textContent = `${safePercent}%`;
+  }
+  if (publicSavingStepText && stepText) {
+    publicSavingStepText.textContent = stepText;
+  }
+};
+
+const addPublicReportPhotoPreview = (dataUrl, fileName) => {
+  if (!publicReportPhotoPreview) return;
+  const photoId = `pub-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'public-photo-item';
+  wrapper.dataset.id = photoId;
+
+  const image = document.createElement('img');
+  image.src = dataUrl;
+  image.alt = fileName || 'Foto da denúncia';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'public-photo-remove';
+  removeBtn.innerHTML = '&times;';
+  removeBtn.addEventListener('click', () => {
+    wrapper.remove();
+    publicReportPhotos = publicReportPhotos.filter((photo) => photo.id !== photoId);
+  });
+
+  wrapper.appendChild(image);
+  wrapper.appendChild(removeBtn);
+  publicReportPhotoPreview.appendChild(wrapper);
+
+  publicReportPhotos.push({
+    id: photoId,
+    name: fileName || 'foto_denuncia.jpg',
+    data: dataUrl,
+  });
+};
+
+const handlePublicPhotoUpload = (event) => {
+  const files = event.target.files;
+  if (!files || !files.length) return;
+
+  const unsupported = [];
+  Array.from(files).forEach((file) => {
+    const mimeType = (file.type || '').toLowerCase();
+    const fileName = file.name || 'arquivo';
+    const isImage = mimeType.startsWith('image/');
+    const isHeic = mimeType.includes('heic') || mimeType.includes('heif') || /\.(heic|heif)$/i.test(fileName);
+    if (!isImage || isHeic) {
+      unsupported.push(fileName);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => addPublicReportPhotoPreview(loadEvent.target.result, file.name);
+    reader.readAsDataURL(file);
+  });
+
+  if (unsupported.length && publicReportError) {
+    showAlert(publicReportError, `Formato não suportado: ${unsupported.join(', ')}. Use JPG, PNG ou WEBP.`);
+  }
+
+  event.target.value = '';
+};
+
+const handlePublicLocation = () => {
+  if (!navigator.geolocation || !publicLocationInput) {
+    if (publicLocationError) publicLocationError.textContent = 'Geolocalização não disponível neste navegador.';
+    return;
+  }
+
+  if (publicGetLocationBtn) {
+    publicGetLocationBtn.disabled = true;
+    publicGetLocationBtn.textContent = 'Obtendo...';
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      publicLocationInput.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      if (publicLocationError) publicLocationError.textContent = '';
+      if (publicGetLocationBtn) {
+        publicGetLocationBtn.disabled = false;
+        publicGetLocationBtn.textContent = 'Obter Coordenadas';
+      }
+    },
+    () => {
+      if (publicLocationError) {
+        publicLocationError.textContent = 'Não foi possível obter a localização. Verifique as permissões.';
+      }
+      if (publicGetLocationBtn) {
+        publicGetLocationBtn.disabled = false;
+        publicGetLocationBtn.textContent = 'Obter Coordenadas';
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+};
+
+const generatePublicProtocol = () => {
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const random = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `DEN-${stamp}-${random}`;
+};
+
+const submitPublicReport = async () => {
+  if (!publicReportConsentInput?.checked) {
+    if (publicReportError) {
+      showAlert(publicReportError, 'Confirme a declaração para enviar a denúncia.');
+    }
+    return;
+  }
+
+  const payload = {
+    protocol: generatePublicProtocol(),
+    date: (publicDateInput?.value || '').trim(),
+    time: (publicTimeInput?.value || '').trim(),
+    location: (publicLocationInput?.value || '').trim(),
+    vehiclePlate: (publicVehiclePlateInput?.value || '').trim().toUpperCase(),
+    vehicleModel: (publicVehicleModelInput?.value || '').trim().toUpperCase(),
+    vehicleColor: (publicVehicleColorInput?.value || '').trim().toUpperCase(),
+    vehicleYear: (publicVehicleYearInput?.value || '').trim(),
+    infractorName: (publicInfractorNameInput?.value || '').trim().toUpperCase(),
+    infractorDoc: (publicInfractorDocInput?.value || '').trim(),
+    observations: (publicObservationsInput?.value || '').trim(),
+    reporterContact: (publicReporterContactInput?.value || '').trim(),
+    photos: publicReportPhotos.map((photo) => ({ name: photo.name, data: photo.data })),
+    reportType: 'public_denuncia',
+    source: 'publico',
+    status: 'nova',
+    targetSheet: 'DENUNCIAS_PUBLICAS',
+    timestamp: new Date().toISOString(),
+  };
+
+  const hasUsefulInfo = Object.entries(payload).some(([key, value]) => {
+    if (['reportType', 'source', 'status', 'targetSheet', 'timestamp', 'protocol'].includes(key)) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    return String(value || '').trim().length > 0;
+  });
+
+  if (!hasUsefulInfo) {
+    if (publicReportError) {
+      showAlert(publicReportError, 'Informe ao menos um dado da denúncia antes de enviar.');
+    }
+    return;
+  }
+
+  if (submitPublicReportBtn) {
+    submitPublicReportBtn.disabled = true;
+    submitPublicReportBtn.textContent = 'Enviando...';
+  }
+
+  setPublicSavingState(true);
+  updatePublicSavingProgress(12, 'Preparando envio da denúncia...');
+
+  try {
+    updatePublicSavingProgress(42, 'Validando e organizando os dados...');
+    await sendToGoogleSheets(payload, {
+      mode: 'public',
+      successElement: publicReportSuccess,
+      successMessage: `Denúncia enviada com sucesso. Protocolo: ${payload.protocol}`,
+    });
+    updatePublicSavingProgress(100, 'Denúncia enviada com sucesso!');
+    clearPublicReportForm();
+    setTimeout(() => {
+      setPublicSavingState(false);
+      updatePublicSavingProgress(0, 'Preparando envio da denúncia...');
+      showPopup(
+        `Obrigado pelo envio da denúncia. Informamos que ela foi registrada sob o número de protocolo ${payload.protocol} e será devidamente analisada, sendo adotadas as providências cabíveis.`,
+        {
+          title: 'Denúncia registrada',
+          buttonLabel: 'Ciente',
+          onClose: () => {
+            showPublicReportScreen();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          },
+        }
+      );
+    }, 350);
+  } catch (error) {
+    setPublicSavingState(false);
+    updatePublicSavingProgress(0, 'Preparando envio da denúncia...');
+    if (publicReportError) {
+      showAlert(publicReportError, 'Não foi possível enviar agora. Tente novamente em instantes.');
+    }
+  } finally {
+    if (submitPublicReportBtn) {
+      submitPublicReportBtn.disabled = false;
+      submitPublicReportBtn.textContent = 'Enviar denúncia';
+    }
+  }
+};
+
 const sendWhatsAppMessage = () => {
   const whatsappNumber = whatsappInput.value.replace(/\D/g, '');
   if (!whatsappNumber) return;
@@ -1209,30 +1536,56 @@ const sendWhatsAppMessage = () => {
   window.open(`https://wa.me/55${whatsappNumber}?text=${encodedMessage}`, '_blank');
 };
 
-const sendToGoogleSheets = async (recordData) => {
+const sendToGoogleSheets = async (recordData, options = {}) => {
   if (!scriptUrl) {
     return [];
   }
 
-  const payload = {
-    occurrenceNumber: recordData.occurrenceNumber,
-    institution: recordData.institution || getInstitutionLabel(getLoggedInstitutionKey()),
-    date: recordData.date,
-    time: recordData.time,
-    agent: recordData.agent,
-    infractorName: recordData.infractorName,
-    infractorDoc: recordData.infractorDoc,
-    whatsapp: recordData.whatsapp,
-    vehiclePlate: recordData.vehiclePlate,
-    vehicleModel: recordData.vehicleModel,
-    vehicleColor: recordData.vehicleColor,
-    vehicleYear: recordData.vehicleYear,
-    location: recordData.location,
-    observations: recordData.observations || '',
-    timestamp: new Date().toISOString(),
-    photos: recordData.photos || [], // Adiciona as fotos!
-    photoUrls: recordData.photoUrls || [],
-  };
+  const isPublicReport = options.mode === 'public';
+  const successElement = options.successElement || alertSuccess;
+  const successMessage = options.successMessage || 'Registro salvo na planilha online com sucesso!';
+
+  const payload = isPublicReport
+    ? {
+        reportType: recordData.reportType || 'public_denuncia',
+        source: recordData.source || 'publico',
+        status: recordData.status || 'nova',
+        targetSheet: recordData.targetSheet || 'DENUNCIAS_PUBLICAS',
+        protocol: recordData.protocol || '',
+        date: recordData.date || '',
+        time: recordData.time || '',
+        location: recordData.location || '',
+        vehiclePlate: recordData.vehiclePlate || '',
+        vehicleModel: recordData.vehicleModel || '',
+        vehicleColor: recordData.vehicleColor || '',
+        vehicleYear: recordData.vehicleYear || '',
+        infractorName: recordData.infractorName || '',
+        infractorDoc: recordData.infractorDoc || '',
+        observations: recordData.observations || '',
+        reporterContact: recordData.reporterContact || '',
+        timestamp: recordData.timestamp || new Date().toISOString(),
+        photos: recordData.photos || [],
+        photoUrls: recordData.photoUrls || [],
+      }
+    : {
+        occurrenceNumber: recordData.occurrenceNumber,
+        institution: recordData.institution || getInstitutionLabel(getLoggedInstitutionKey()),
+        date: recordData.date,
+        time: recordData.time,
+        agent: recordData.agent,
+        infractorName: recordData.infractorName,
+        infractorDoc: recordData.infractorDoc,
+        whatsapp: recordData.whatsapp,
+        vehiclePlate: recordData.vehiclePlate,
+        vehicleModel: recordData.vehicleModel,
+        vehicleColor: recordData.vehicleColor,
+        vehicleYear: recordData.vehicleYear,
+        location: recordData.location,
+        observations: recordData.observations || '',
+        timestamp: new Date().toISOString(),
+        photos: recordData.photos || [],
+        photoUrls: recordData.photoUrls || [],
+      };
 
   try {
     const response = await withTimeout(
@@ -1257,7 +1610,9 @@ const sendToGoogleSheets = async (recordData) => {
           return null;
         }
       })();
-      showAlert(alertSuccess, 'Registro salvo na planilha online com sucesso!');
+      if (successElement) {
+        showAlert(successElement, successMessage);
+      }
       const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
       return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
     }
@@ -1294,7 +1649,21 @@ const updateRecordsList = () => {
   const duplicateMap = buildDuplicateMap(allRecords);
   const orderedRecords = allRecords
     .map((record, originalIndex) => ({ record, originalIndex }))
-    .reverse();
+    .sort((a, b) => {
+      const createdA = getRecordCreatedAtTimestamp(a.record);
+      const createdB = getRecordCreatedAtTimestamp(b.record);
+      if (Number.isFinite(createdA) || Number.isFinite(createdB)) {
+        return (createdB || 0) - (createdA || 0);
+      }
+
+      const occA = getRecordTimestamp(a.record);
+      const occB = getRecordTimestamp(b.record);
+      if (Number.isFinite(occA) || Number.isFinite(occB)) {
+        return (occB || 0) - (occA || 0);
+      }
+
+      return b.originalIndex - a.originalIndex;
+    });
 
   orderedRecords.forEach(({ record, originalIndex }) => {
     const recordItem = document.createElement('div');
@@ -1914,6 +2283,7 @@ const addRecord = async () => {
 
     if (currentlyEditingIndex >= 0) {
       const existing = allRecords[currentlyEditingIndex];
+      recordData.createdAtLocal = existing?.createdAtLocal || existing?.timestamp || existing?.createdAt || new Date().toISOString();
       const recordId = existing?.id;
       if (db && recordId) {
         try {
@@ -1955,6 +2325,7 @@ const addRecord = async () => {
       currentlyEditingIndex = -1;
       addRecordBtn.textContent = 'Adicionar Registro';
     } else {
+      recordData.createdAtLocal = new Date().toISOString();
       if (db) {
         try {
           const payload = buildRecordPayload(recordData, true);
@@ -2421,6 +2792,7 @@ const getFilteredRecords = () => applyFilters(allRecords);
 
 // ─── Relatório de Atividade ───────────────────────────────────────────────────
 let activityAgents = [];
+let activityPhotos = [];
 
 const normalizeUpperText = (value) =>
   (value || '')
@@ -2506,6 +2878,85 @@ const renderActivityAgentsList = () => {
   });
 };
 
+const renderActivityPhotoList = () => {
+  if (!activityPhotoList) return;
+  activityPhotoList.innerHTML = '';
+
+  if (!activityPhotos.length) {
+    const emptyState = document.createElement('span');
+    emptyState.className = 'activity-photo-empty';
+    emptyState.textContent = 'Nenhuma foto adicionada.';
+    activityPhotoList.appendChild(emptyState);
+    return;
+  }
+
+  activityPhotos.forEach((photo, idx) => {
+    const item = document.createElement('div');
+    item.className = 'activity-photo-item';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'activity-photo-thumb';
+    thumb.src = photo.dataUrl;
+    thumb.alt = `Foto da atividade ${idx + 1}`;
+
+    const captionInput = document.createElement('input');
+    captionInput.type = 'text';
+    captionInput.className = 'activity-photo-caption';
+    captionInput.placeholder = 'Legenda da imagem';
+    captionInput.value = photo.caption || '';
+    captionInput.maxLength = 180;
+    captionInput.addEventListener('input', (event) => {
+      activityPhotos[idx].caption = event.target.value;
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'activity-photo-remove';
+    removeBtn.textContent = 'Remover';
+    removeBtn.addEventListener('click', () => {
+      activityPhotos.splice(idx, 1);
+      renderActivityPhotoList();
+    });
+
+    item.appendChild(thumb);
+    item.appendChild(captionInput);
+    item.appendChild(removeBtn);
+    activityPhotoList.appendChild(item);
+  });
+};
+
+const resetActivityPhotos = () => {
+  activityPhotos = [];
+  if (activityPhotoInput) {
+    activityPhotoInput.value = '';
+  }
+  renderActivityPhotoList();
+};
+
+const readImageAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
+    reader.readAsDataURL(file);
+  });
+
+const addActivityPhotos = async (fileList) => {
+  const imageFiles = Array.from(fileList || []).filter((file) => (file.type || '').startsWith('image/'));
+  if (!imageFiles.length) return;
+
+  const newPhotos = await Promise.all(
+    imageFiles.map(async (file) => ({
+      name: file.name,
+      dataUrl: await readImageAsDataUrl(file),
+      caption: '',
+    }))
+  );
+
+  activityPhotos = activityPhotos.concat(newPhotos);
+  renderActivityPhotoList();
+};
+
 const updateActivityRecordsSummary = () => {
   if (!activityRecordsSummary || !activityReportDateInput) return;
   const dateVal = activityReportDateInput.value;
@@ -2519,6 +2970,8 @@ const updateActivityRecordsSummary = () => {
 
 const openActivityReportView = () => {
   activityAgents = [];
+  resetActivityPhotos();
+  if (activityFieldNotesInput) activityFieldNotesInput.value = '';
   const loggedAgent = normalizeUpperText(getLoggedAgentName());
   const loggedInstitution = getInstitutionLabel(getLoggedInstitutionKey()) || institutions.icmbio;
   populateActivityInstitutionOptions();
@@ -2536,32 +2989,21 @@ const openActivityReportView = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const generateActivityReportPDF = () => {
-  if (!activityReportDateInput) return;
-  const dateVal = activityReportDateInput.value;
-  if (!dateVal) {
-    alert('Selecione a data da atividade.');
-    return;
-  }
-  const dayRecords = allRecords
-    .filter((r) => r.date === dateVal)
-    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  if (dayRecords.length === 0) {
-    alert(`Nenhuma ocorrência registrada em ${formatDateBr(dateVal)}.`);
-    return;
-  }
-  if (!jsPDF) {
-    alert('Biblioteca jsPDF não carregada.');
-    return;
-  }
+const drawActivityPdfFooter = (doc, pageWidth) => {
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(
+    'Documento gerado automaticamente pela aplicação Veículos na Praia Não - APA Delta do Parnaíba',
+    pageWidth / 2,
+    204,
+    { align: 'center' }
+  );
+  doc.setTextColor(0, 0, 0);
+};
 
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const pageWidth = 297;
-  const marginLeft = 10;
-  const marginRight = 10;
+const drawActivityPdfHeader = (doc, pageWidth, marginLeft, marginRight, title) => {
   let yPos = 10;
 
-  // Brasão da república
   try {
     const brasaoSize = 18;
     doc.addImage(
@@ -2575,7 +3017,6 @@ const generateActivityReportPDF = () => {
   } catch (_) {}
   yPos += 22;
 
-  // Cabeçalho institucional (mesmo dos demais relatórios)
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
@@ -2586,17 +3027,96 @@ const generateActivityReportPDF = () => {
   doc.text('ÁREA DE PROTEÇÃO AMBIENTAL DELTA DO PARNAÍBA', pageWidth / 2, yPos, { align: 'center' });
   yPos += 9;
 
-  // Separador
   doc.setDrawColor(0, 69, 33);
   doc.setLineWidth(0.5);
   doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
   yPos += 7;
 
-  // Título do relatório
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('RELATÓRIO DE ATIVIDADE — VEÍCULOS NA PRAIA NÃO', pageWidth / 2, yPos, { align: 'center' });
+  doc.text(title, pageWidth / 2, yPos, { align: 'center' });
   yPos += 7;
+
+  return yPos;
+};
+
+const appendActivityPhotoPages = (doc, dateVal, pageWidth, marginLeft, marginRight) => {
+  if (!activityPhotos.length) return;
+
+  activityPhotos.forEach((photo, index) => {
+    if (!photo?.dataUrl) return;
+    doc.addPage('a4', 'landscape');
+
+    let yPos = drawActivityPdfHeader(doc, pageWidth, marginLeft, marginRight, 'RELATÓRIO FOTOGRÁFICO');
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Data da Atividade: ${formatDateBr(dateVal)}`, marginLeft, yPos);
+    doc.text(`Imagem ${index + 1} de ${activityPhotos.length}`, pageWidth - marginRight, yPos, { align: 'right' });
+    yPos += 6;
+
+    const maxImageWidth = pageWidth - marginLeft - marginRight;
+    const maxImageHeight = 120;
+    let drawWidth = maxImageWidth;
+    let drawHeight = maxImageHeight;
+
+    try {
+      const props = doc.getImageProperties(photo.dataUrl);
+      if (props?.width && props?.height) {
+        const ratio = Math.min(maxImageWidth / props.width, maxImageHeight / props.height);
+        drawWidth = props.width * ratio;
+        drawHeight = props.height * ratio;
+      }
+    } catch (_) {}
+
+    const imageX = (pageWidth - drawWidth) / 2;
+    const imageY = yPos;
+    const format = photo.dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+    doc.addImage(photo.dataUrl, format, imageX, imageY, drawWidth, drawHeight, undefined, 'MEDIUM');
+
+    const legendY = imageY + drawHeight + 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Legenda:', marginLeft, legendY);
+    doc.setFont('helvetica', 'normal');
+    const legendText = (photo.caption || '').trim() || 'Sem legenda informada.';
+    const legendLines = doc.splitTextToSize(legendText, pageWidth - marginLeft - marginRight);
+    doc.text(legendLines, marginLeft, legendY + 5);
+
+    drawActivityPdfFooter(doc, pageWidth);
+  });
+};
+
+const generateActivityReportPDF = () => {
+  if (!activityReportDateInput) return;
+  const dateVal = activityReportDateInput.value;
+  if (!dateVal) {
+    alert('Selecione a data da atividade.');
+    return;
+  }
+  const dayRecords = allRecords
+    .filter((r) => r.date === dateVal)
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const fieldNotes = (activityFieldNotesInput?.value || '').trim();
+  if (dayRecords.length === 0) {
+    alert(`Nenhuma ocorrência registrada em ${formatDateBr(dateVal)}.`);
+    return;
+  }
+  if (!jsPDF) {
+    alert('Biblioteca jsPDF não carregada.');
+    return;
+  }
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = 297;
+  const marginLeft = 10;
+  const marginRight = 10;
+  let yPos = drawActivityPdfHeader(
+    doc,
+    pageWidth,
+    marginLeft,
+    marginRight,
+    'RELATÓRIO DE ATIVIDADE — VEÍCULOS NA PRAIA NÃO'
+  );
 
   // Data e total de ocorrências
   doc.setFontSize(9);
@@ -2617,6 +3137,18 @@ const generateActivityReportPDF = () => {
       yPos += 5;
     });
   }
+
+  if (fieldNotes) {
+    yPos += 2;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Observações de Campo:', marginLeft, yPos);
+    yPos += 5;
+    doc.setFont('helvetica', 'normal');
+    const noteLines = doc.splitTextToSize(fieldNotes, pageWidth - marginLeft - marginRight);
+    doc.text(noteLines, marginLeft, yPos);
+    yPos += noteLines.length * 4 + 2;
+  }
+
   yPos += 4;
 
   // Linha separadora antes da tabela
@@ -2676,18 +3208,11 @@ const generateActivityReportPDF = () => {
       10: { cellWidth: 'auto' }, // Observações
     },
     didDrawPage: (data) => {
-      // Rodapé em cada página
-      doc.setFontSize(7);
-      doc.setTextColor(100, 100, 100);
-      doc.text(
-          'Documento gerado automaticamente pela aplicação Veículos na Praia Não - APA Delta do Parnaíba',
-        pageWidth / 2,
-        204,
-        { align: 'center' }
-      );
-      doc.setTextColor(0, 0, 0);
+      drawActivityPdfFooter(doc, pageWidth);
     },
   });
+
+  appendActivityPhotoPages(doc, dateVal, pageWidth, marginLeft, marginRight);
 
   const dateFormatted = dateVal.replace(/-/g, '');
   doc.save(`Relatorio_Atividade_${dateFormatted}.pdf`);
@@ -2759,22 +3284,129 @@ const generatePDF = async () => {
     return;
   }
   try {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const reportTitle = getReportTitle();
-    
-    // Processa cada registro preparando as fotos
-    for (let index = 0; index < filteredRecords.length; index++) {
-      if (index > 0) {
-        doc.addPage();
-      }
-      const preparedRecord = await prepareRecordPhotos(filteredRecords[index]);
-      renderRecordToDoc(doc, preparedRecord, {
-        includeComunicado: false,
-        reportTitle: index === 0 ? reportTitle : '',
-      });
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = 297;
+    const marginLeft = 10;
+    const marginRight = 10;
+
+    const orderedRecords = [...filteredRecords].sort((a, b) => {
+      const aTime = getRecordTimestamp(a) || 0;
+      const bTime = getRecordTimestamp(b) || 0;
+      return aTime - bTime;
+    });
+
+    let yPos = drawActivityPdfHeader(
+      doc,
+      pageWidth,
+      marginLeft,
+      marginRight,
+      'RELATÓRIO DE ATIVIDADE — VEÍCULOS NA PRAIA NÃO'
+    );
+
+    const filterParts = [];
+    const dateFrom = (filterDateFrom?.value || '').trim();
+    const dateTo = (filterDateTo?.value || '').trim();
+    const institution = (filterInstitution?.value || '').trim();
+    const agent = (filterAgent?.value || '').trim();
+    const month = (filterMonth?.value || '').trim();
+    const year = (filterYear?.value || '').trim();
+    const searchText = (filterSearch?.value || '').trim();
+
+    if (dateFrom || dateTo) {
+      const start = dateFrom ? formatDateBr(dateFrom) : '...';
+      const end = dateTo ? formatDateBr(dateTo) : '...';
+      filterParts.push(`Período: ${start} a ${end}`);
     }
-    
-    doc.save('Relatorio_Filtrado.pdf');
+    if (institution) filterParts.push(`Instituição: ${institution}`);
+    if (agent) filterParts.push(`Agente: ${agent}`);
+    if (month) filterParts.push(`Mês: ${month}`);
+    if (year) filterParts.push(`Ano: ${year}`);
+    if (searchText) filterParts.push(`Busca: ${searchText}`);
+    if (filterDuplicates?.checked) filterParts.push('Somente reincidentes');
+    if (!filterParts.length) filterParts.push('Filtros: todos os registros');
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total de ocorrências: ${orderedRecords.length}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 6;
+
+    const filterText = filterParts.join('  |  ');
+    const filterLines = doc.splitTextToSize(filterText, pageWidth - marginLeft - marginRight);
+    filterLines.forEach((line) => {
+      doc.text(line, marginLeft, yPos);
+      yPos += 5;
+    });
+    yPos += 2;
+
+    doc.setDrawColor(0, 69, 33);
+    doc.setLineWidth(0.3);
+    doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
+    yPos += 4;
+
+    const tableColumns = [
+      { header: 'Nº Ocorr.', dataKey: 'occurrenceNumber' },
+      { header: 'Hora', dataKey: 'time' },
+      { header: 'Condutor', dataKey: 'infractorName' },
+      { header: 'CPF', dataKey: 'infractorDoc' },
+      { header: 'WhatsApp', dataKey: 'whatsapp' },
+      { header: 'Placa', dataKey: 'vehiclePlate' },
+      { header: 'Modelo / Cor / Ano', dataKey: 'vehicle' },
+      { header: 'Agente', dataKey: 'agent' },
+      { header: 'Instituição', dataKey: 'institution' },
+      { header: 'Local', dataKey: 'location' },
+      { header: 'Observações', dataKey: 'observations' },
+    ];
+
+    const tableRows = orderedRecords.map((r) => ({
+      occurrenceNumber: r.occurrenceNumber || '--',
+      time: r.time || '--',
+      infractorName: r.infractorName || '--',
+      infractorDoc: r.infractorDoc || '--',
+      whatsapp: r.whatsapp || '--',
+      vehiclePlate: r.vehiclePlate || '--',
+      vehicle: [r.vehicleModel, r.vehicleColor, r.vehicleYear].filter(Boolean).join(' / ') || '--',
+      agent: r.agent || '--',
+      institution: (r.institution || '--')
+        .replace('Instituto Chico Mendes de Conservação da Biodiversidade', 'ICMBio')
+        .replace('Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí', 'SEMARH')
+        .replace('Polícia Militar do Estado do Piauí', 'PMPI')
+        .replace('Prefeitura Municipal de Luís Correia', 'Prefeitura'),
+      location: r.location || '--',
+      observations: r.observations || '',
+    }));
+
+    doc.autoTable({
+      startY: yPos,
+      columns: tableColumns,
+      body: tableRows,
+      margin: { left: marginLeft, right: marginRight },
+      styles: {
+        fontSize: 6.5,
+        cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
+        overflow: 'linebreak',
+        valign: 'top',
+      },
+      headStyles: { fillColor: [0, 69, 33], textColor: 255, fontStyle: 'bold', fontSize: 7 },
+      alternateRowStyles: { fillColor: [240, 248, 228] },
+      columnStyles: {
+        0: { cellWidth: 18 },
+        1: { cellWidth: 10 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 22 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 28 },
+        7: { cellWidth: 28 },
+        8: { cellWidth: 18 },
+        9: { cellWidth: 42 },
+        10: { cellWidth: 'auto' },
+      },
+      didDrawPage: () => {
+        drawActivityPdfFooter(doc, pageWidth);
+      },
+    });
+
+    doc.save('Relatorio_Atividade_Filtrado.pdf');
   } catch (error) {
     showAlert(alertError, 'Erro ao gerar relatório PDF.');
     console.error('Erro ao gerar PDF:', error);
@@ -2817,8 +3449,7 @@ window.addEventListener('load', () => {
         setLoggedUser(loggedAgent, loggedInstitution);
         showView('dashboardView');
       } else {
-        loginScreen.classList.remove('hidden');
-        appShell.classList.add('hidden');
+        showEntryScreen();
       }
 
       const params = new URLSearchParams(window.location.search);
@@ -2837,8 +3468,7 @@ window.addEventListener('load', () => {
       populateMonthYearFilters();
       populateLoginAgents();
       updateLoginAgentMode();
-      loginScreen.classList.remove('hidden');
-      appShell.classList.add('hidden');
+      showEntryScreen();
     }
   })();
 });
@@ -2961,6 +3591,58 @@ if (backToDashboardFromDetail) {
   backToDashboardFromDetail.addEventListener('click', () => showView('dashboardView'));
 }
 
+if (openPublicReportBtn) {
+  openPublicReportBtn.addEventListener('click', () => {
+    clearPublicReportForm();
+    showPublicReportScreen();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+if (openLoginBtn) {
+  openLoginBtn.addEventListener('click', () => {
+    showLoginScreen();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+if (backFromPublicReportBtn) {
+  backFromPublicReportBtn.addEventListener('click', () => {
+    showEntryScreen();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+if (publicReportPhotosInput) {
+  publicReportPhotosInput.addEventListener('change', handlePublicPhotoUpload);
+}
+
+if (publicGetLocationBtn) {
+  publicGetLocationBtn.addEventListener('click', handlePublicLocation);
+}
+
+if (publicInfractorDocInput) {
+  publicInfractorDocInput.addEventListener('input', (event) => {
+    event.target.value = formatCPF(event.target.value);
+  });
+}
+
+[publicVehiclePlateInput, publicVehicleModelInput, publicVehicleColorInput, publicInfractorNameInput].forEach(
+  (field) => {
+    if (!field) return;
+    field.addEventListener('input', () => {
+      field.value = field.value.toUpperCase();
+    });
+  }
+);
+
+if (publicReportForm) {
+  publicReportForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await submitPublicReport();
+  });
+}
+
 if (toggleAnalysisBtn && analysisPanel) {
   toggleAnalysisBtn.addEventListener('click', () => {
     const isHidden = analysisPanel.classList.contains('hidden');
@@ -2982,6 +3664,16 @@ if (toggleFiltersBtn && dashboardFiltersPanel) {
   toggleFiltersBtn.addEventListener('click', () => {
     const isHidden = dashboardFiltersPanel.classList.toggle('hidden');
     toggleFiltersBtn.textContent = isHidden ? 'Mostrar filtros' : 'Ocultar filtros';
+    if (!isHidden) {
+      updateDashboard();
+    }
+  });
+}
+
+if (toggleChartsBtn && dashboardChartsPanel) {
+  toggleChartsBtn.addEventListener('click', () => {
+    const isHidden = dashboardChartsPanel.classList.toggle('hidden');
+    toggleChartsBtn.textContent = isHidden ? 'Mostrar gráficos' : 'Ocultar gráficos';
     if (!isHidden) {
       updateDashboard();
     }
@@ -3057,6 +3749,17 @@ if (activityReportDateInput) {
 
 if (activityAgentInstitutionSelect) {
   activityAgentInstitutionSelect.addEventListener('change', populateActivityAgentDatalist);
+}
+
+if (activityPhotoInput) {
+  activityPhotoInput.addEventListener('change', async (event) => {
+    try {
+      await addActivityPhotos(event.target.files);
+      activityPhotoInput.value = '';
+    } catch (_) {
+      alert('Não foi possível carregar uma ou mais fotos selecionadas.');
+    }
+  });
 }
 
 if (generateActivityReportBtn) {

@@ -13,7 +13,140 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   </head>
   <body>
-    <div id="loginScreen" class="auth-screen">
+    <div id="entryScreen" class="auth-screen">
+      <div class="auth-card entry-card">
+        <div class="auth-brand">
+          <img src="/logo vpn.png" alt="Logo VPN" class="logo" />
+        </div>
+        <h1>Veículos na Praia Não</h1>
+        <p class="auth-subtitle">Escolha como deseja acessar a plataforma.</p>
+        <div class="auth-info">
+          <div class="auth-info-item">
+            <strong>Denúncia Pública</strong>
+            <span>Qualquer cidadão pode registrar uma denúncia com campos opcionais e fotos.</span>
+          </div>
+          <div class="auth-info-item">
+            <strong>Sistema Institucional</strong>
+            <span>Acesso restrito para equipes em campo com autenticação por instituição.</span>
+          </div>
+        </div>
+        <div class="entry-actions">
+          <button type="button" id="openPublicReportBtn">Denuncie agora</button>
+          <button type="button" id="openLoginBtn" class="ghost-btn entry-secondary-btn">Entrar no sistema</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="publicReportScreen" class="auth-screen hidden">
+      <div class="auth-card public-report-card">
+        <div class="dashboard-actions" style="margin-top: 0;">
+          <button type="button" id="backFromPublicReportBtn" class="ghost-btn">← Voltar</button>
+        </div>
+        <h1>Denuncie agora</h1>
+        <p class="auth-subtitle">Preencha somente o que souber. Sua denúncia será enviada para triagem.</p>
+
+        <form id="publicReportForm" class="auth-form" onsubmit="return false;">
+          <div class="two-columns">
+            <div class="form-group">
+              <label for="publicDate">Data observada</label>
+              <input type="date" id="publicDate" name="date" />
+            </div>
+            <div class="form-group">
+              <label for="publicTime">Hora observada</label>
+              <input type="time" id="publicTime" name="time" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="publicLocation">Local da ocorrência</label>
+            <div class="location-container">
+              <input type="text" id="publicLocation" name="location" placeholder="Ex.: Praia Atalaia, próximo ao posto" />
+              <button type="button" id="publicGetLocationBtn">Obter Coordenadas</button>
+            </div>
+            <small id="publicLocationError" class="location-error" style="display:block; margin-top:4px;"></small>
+          </div>
+
+          <div class="two-columns">
+            <div class="form-group">
+              <label for="publicVehiclePlate">Placa do veículo</label>
+              <input type="text" id="publicVehiclePlate" name="vehiclePlate" placeholder="ABC1D23" maxlength="8" />
+            </div>
+            <div class="form-group">
+              <label for="publicVehicleModel">Modelo do veículo</label>
+              <input type="text" id="publicVehicleModel" name="vehicleModel" placeholder="Modelo" />
+            </div>
+          </div>
+
+          <div class="two-columns">
+            <div class="form-group">
+              <label for="publicVehicleColor">Cor</label>
+              <input type="text" id="publicVehicleColor" name="vehicleColor" placeholder="Cor" />
+            </div>
+            <div class="form-group">
+              <label for="publicVehicleYear">Ano</label>
+              <input type="text" id="publicVehicleYear" name="vehicleYear" placeholder="Ano" maxlength="4" inputmode="numeric" pattern="[0-9]*" />
+            </div>
+          </div>
+
+          <div class="two-columns">
+            <div class="form-group">
+              <label for="publicInfractorName">Nome do condutor (se souber)</label>
+              <input type="text" id="publicInfractorName" name="infractorName" placeholder="Nome do condutor" />
+            </div>
+            <div class="form-group">
+              <label for="publicInfractorDoc">CPF (se souber)</label>
+              <input type="text" id="publicInfractorDoc" name="infractorDoc" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="publicObservations">Relato da denúncia</label>
+            <textarea id="publicObservations" name="observations" rows="4" maxlength="1000" placeholder="Descreva o que ocorreu"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="publicReporterContact">Contato do denunciante (opcional)</label>
+            <input type="text" id="publicReporterContact" name="reporterContact" placeholder="Telefone ou WhatsApp" />
+          </div>
+
+          <div class="form-group">
+            <label for="publicReportPhotos">Fotos (opcional)</label>
+            <input type="file" id="publicReportPhotos" accept="image/*" multiple />
+            <div id="publicReportPhotoPreview" class="public-photo-grid"></div>
+          </div>
+
+          <label class="checkbox-line public-consent-line">
+            <input type="checkbox" id="publicReportConsent" />
+            Declaro que as informações são verdadeiras e autorizo o uso para fins de fiscalização.
+          </label>
+
+          <button type="submit" id="submitPublicReportBtn">Enviar denúncia</button>
+          <div id="publicReportSuccess" class="alert-success"></div>
+          <div id="publicReportError" class="alert-error"></div>
+        </form>
+      </div>
+    </div>
+
+    <div id="publicSavingOverlay" class="saving-overlay hidden" aria-live="polite" aria-busy="true">
+      <div class="saving-card">
+        <img
+          class="saving-image"
+          alt="Carregando"
+          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' stroke='%23588526' stroke-width='10' fill='none' stroke-linecap='round' stroke-dasharray='210' stroke-dashoffset='60'><animateTransform attributeName='transform' type='rotate' from='0 50 50' to='360 50 50' dur='1s' repeatCount='indefinite'/></circle></svg>"
+        />
+        <div class="saving-content">
+          <p id="publicSavingStepText" class="saving-step-text">Preparando envio da denúncia...</p>
+          <div class="saving-progress-row">
+            <div class="saving-progress-track" aria-hidden="true">
+              <div id="publicSavingProgressBar" class="saving-progress-bar" style="width: 0%;"></div>
+            </div>
+            <span id="publicSavingProgressPercent" class="saving-progress-percent">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="loginScreen" class="auth-screen hidden">
       <div class="auth-card">
         <div class="auth-brand">
           <img src="/logo vpn.png" alt="Logo VPN" class="logo" />
@@ -107,6 +240,7 @@
 
           <div class="filters-toggle">
             <button type="button" id="toggleFiltersBtn" class="ghost-btn">Mostrar filtros</button>
+            <button type="button" id="toggleChartsBtn" class="ghost-btn">Mostrar gráficos</button>
           </div>
 
           <div id="dashboardFiltersPanel" class="hidden">
@@ -178,7 +312,9 @@
               <h3>Condutores reincidentes</h3>
               <div id="duplicateDriversList" class="stat-list"></div>
             </div>
+          </div>
 
+          <div id="dashboardChartsPanel" class="hidden">
             <div class="card">
               <h3>Gráficos Automáticos</h3>
               <div class="dashboard-charts-grid">
@@ -451,6 +587,23 @@
                 <datalist id="activityAgentDatalist"></datalist>
                 <button type="button" id="addActivityAgentBtn" class="ghost-btn add-agent-btn">+ Adicionar Agente</button>
               </div>
+            </div>
+
+            <div class="form-group">
+              <label for="activityPhotoInput">Fotos da Atividade (opcional)</label>
+              <input type="file" id="activityPhotoInput" accept="image/*" multiple />
+              <p class="activity-photo-help">Adicione uma ou mais fotos e descreva uma legenda curta para cada imagem.</p>
+              <div id="activityPhotoList" class="activity-photo-list"></div>
+            </div>
+
+            <div class="form-group">
+              <label for="activityFieldNotes">Observações de Campo (opcional)</label>
+              <textarea
+                id="activityFieldNotes"
+                rows="3"
+                maxlength="800"
+                placeholder="Descreva alguma observação relevante ocorrida em campo"
+              ></textarea>
             </div>
 
             <div id="activityRecordsSummary" class="activity-records-summary"></div>
