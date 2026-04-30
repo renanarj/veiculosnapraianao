@@ -5,6 +5,10 @@ echo "🔄 Sincronizando com versão online..."
 ./atualizar.sh
 
 echo ""
+echo "🔎 Verificando alinhamento com GitHub e online..."
+./verificar_base.sh
+
+echo ""
 echo "✏️  Faça suas edições nos arquivos e depois execute:"
 echo "   ./publicar.sh"
 echo ""

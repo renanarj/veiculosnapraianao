@@ -29,6 +29,11 @@ const photoPreviewContainer = document.getElementById('photoPreviewContainer');
 const entryScreen = document.getElementById('entryScreen');
 const openPublicReportBtn = document.getElementById('openPublicReportBtn');
 const openLoginBtn = document.getElementById('openLoginBtn');
+const toggleTrackProtocolBtn = document.getElementById('toggleTrackProtocolBtn');
+const trackProtocolPanel = document.getElementById('trackProtocolPanel');
+const trackProtocolInput = document.getElementById('trackProtocolInput');
+const trackProtocolBtn = document.getElementById('trackProtocolBtn');
+const trackProtocolResult = document.getElementById('trackProtocolResult');
 const publicReportScreen = document.getElementById('publicReportScreen');
 const backFromPublicReportBtn = document.getElementById('backFromPublicReportBtn');
 const publicReportForm = document.getElementById('publicReportForm');
@@ -55,6 +60,11 @@ const publicSavingOverlay = document.getElementById('publicSavingOverlay');
 const publicSavingStepText = document.getElementById('publicSavingStepText');
 const publicSavingProgressBar = document.getElementById('publicSavingProgressBar');
 const publicSavingProgressPercent = document.getElementById('publicSavingProgressPercent');
+const publicProtocolModal = document.getElementById('publicProtocolModal');
+const publicProtocolMessage = document.getElementById('publicProtocolMessage');
+const publicProtocolValue = document.getElementById('publicProtocolValue');
+const copyProtocolBtn = document.getElementById('copyProtocolBtn');
+const closeProtocolModalBtn = document.getElementById('closeProtocolModalBtn');
 const fullscreenCameraModal = document.getElementById('fullscreenCameraModal');
 const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview');
 const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
@@ -97,8 +107,12 @@ const applyFiltersBtn = document.getElementById('applyFiltersBtn');
 const clearFiltersBtn = document.getElementById('clearFiltersBtn');
 const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
 const toggleChartsBtn = document.getElementById('toggleChartsBtn');
+const toggleExternalReportsBtn = document.getElementById('toggleExternalReportsBtn');
 const dashboardFiltersPanel = document.getElementById('dashboardFiltersPanel');
 const dashboardChartsPanel = document.getElementById('dashboardChartsPanel');
+const externalReportsPanel = document.getElementById('externalReportsPanel');
+const externalReportsList = document.getElementById('externalReportsList');
+const externalReportsCount = document.getElementById('externalReportsCount');
 const byAgentList = document.getElementById('byAgentList');
 const byMonthList = document.getElementById('byMonthList');
 const duplicateDriversList = document.getElementById('duplicateDriversList');
@@ -148,13 +162,20 @@ let currentlyEditingIndex = -1;
 let stream = null;
 let photosData = [];
 let publicReportPhotos = [];
+let publicReports = [];
 let pendingDeleteIndex = -1;
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
+let latestPublicProtocol = '';
 const usedOccurrenceNumbers = new Set();
 const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
 const recurrenceWindowMs = 2 * 60 * 60 * 1000;
+const publicReportNotificationEmail = 'apa.delta@icmbio.gov.br';
+const maxEmailPdfBase64Length = 5_000_000;
+const maxRecordPdfPhotos = 8;
+const publicReportsCollection = 'records';
+const publicReportsCacheKey = 'publicReportsCache';
 const institutions = {
   icmbio: 'Instituto Chico Mendes - ICMBio',
   semarh: 'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH',
@@ -179,7 +200,7 @@ const icmbioAgents = [
   'CONTINGÊNCIA',
 ];
 
-const scriptUrl = 'https://script.google.com/macros/s/AKfycbzJpr-m8DxagIiZzr5bCRx42v3y02ieN8i8AxDJHAHuDianCG5Az4vRduIqsgS49EM18g/exec';
+const scriptUrl = 'https://script.google.com/macros/s/AKfycbx85Y2cdD-NjXKb_vJvbQHoQJd3S3BZs7gKfxgDbfc4BNkuYHPcBtIfL9zpiqqwInm8/exec';
 const firebaseConfig = {
   apiKey: 'AIzaSyAh3dTQ4EeibeakaiCE5fTUpDxplrJDFK4',
   authDomain: 'veiculosnapraianao.firebaseapp.com',
@@ -267,6 +288,311 @@ const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
 const getLoggedInstitutionKey = () => localStorage.getItem(sessionInstitutionKey) || '';
 
 const getInstitutionLabel = (institutionKey) => institutions[institutionKey] || '';
+
+const isIcmbioInstitution = () => getLoggedInstitutionKey() === 'icmbio';
+
+const normalizeProtocol = (value) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+
+const getPublicReportDocId = (protocol) => normalizeProtocol(protocol).replace(/[^A-Z0-9_-]/g, '_');
+
+const getPublicReportStatusValue = (status) => {
+  const normalized = normalizeText(status);
+  if (normalized === 'recebida') return 'Recebida';
+  if (normalized === 'em analise' || normalized === 'em analise') return 'Em análise';
+  if (normalized === 'analisada') return 'Analisada';
+  return 'Recebida';
+};
+
+const buildPublicReportFirestorePayload = (payload) => ({
+  reportType: 'public_denuncia',
+  protocol: normalizeProtocol(payload.protocol),
+  date: payload.date || '',
+  time: payload.time || '',
+  location: payload.location || '',
+  vehiclePlate: payload.vehiclePlate || '',
+  vehicleModel: payload.vehicleModel || '',
+  vehicleColor: payload.vehicleColor || '',
+  vehicleYear: payload.vehicleYear || '',
+  infractorName: payload.infractorName || '',
+  observations: payload.observations || '',
+  reporterContact: payload.reporterContact || '',
+  status: getPublicReportStatusValue(payload.status || 'Recebida'),
+  managerNote: '',
+  managedByAgent: '',
+  managedByInstitution: '',
+  source: payload.source || 'publico',
+  timestampIso: payload.timestamp || new Date().toISOString(),
+  createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+});
+
+const loadPublicReportsFromCache = () => {
+  const raw = localStorage.getItem(publicReportsCacheKey);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const savePublicReportsToCache = (reports = []) => {
+  localStorage.setItem(publicReportsCacheKey, JSON.stringify(reports));
+};
+
+const upsertPublicReportCache = (payload) => {
+  const protocol = normalizeProtocol(payload.protocol);
+  if (!protocol) return;
+
+  const current = loadPublicReportsFromCache();
+  const next = current.filter((item) => normalizeProtocol(item.protocol) !== protocol);
+  next.push({
+    reportType: 'public_denuncia',
+    protocol,
+    date: payload.date || '',
+    time: payload.time || '',
+    location: payload.location || '',
+    vehiclePlate: payload.vehiclePlate || '',
+    observations: payload.observations || '',
+    status: 'Recebida',
+    managerNote: '',
+    managedByAgent: '',
+    timestampIso: payload.timestamp || new Date().toISOString(),
+  });
+
+  next.sort((a, b) => (b.timestampIso || '').localeCompare(a.timestampIso || ''));
+  savePublicReportsToCache(next.slice(0, 300));
+};
+
+const savePublicReportToFirestore = async (payload) => {
+  if (!db) return;
+  const protocol = normalizeProtocol(payload.protocol);
+  if (!protocol) return;
+
+  const docId = getPublicReportDocId(protocol);
+  const data = buildPublicReportFirestorePayload(payload);
+  await db.collection(publicReportsCollection).doc(docId).set(data, { merge: true });
+};
+
+const loadPublicReportsFromFirestore = async () => {
+  if (!db) return [];
+  try {
+    const snapshot = await db
+      .collection(publicReportsCollection)
+      .where('reportType', '==', 'public_denuncia')
+      .limit(300)
+      .get();
+    const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return rows.sort((a, b) => {
+      const av = (a.timestampIso || '').toString();
+      const bv = (b.timestampIso || '').toString();
+      return bv.localeCompare(av);
+    });
+  } catch (error) {
+    return [];
+  }
+};
+
+const renderExternalReportsPanel = () => {
+  if (!externalReportsList) return;
+
+  externalReportsList.innerHTML = '';
+  if (externalReportsCount) {
+    externalReportsCount.textContent = `${publicReports.length} denúncias`;
+  }
+
+  if (!publicReports.length) {
+    externalReportsList.innerHTML = '<p>Nenhuma denúncia externa encontrada.</p>';
+    return;
+  }
+
+  publicReports.forEach((report) => {
+    const card = document.createElement('div');
+    card.className = 'external-report-item';
+
+    const statusValue = getPublicReportStatusValue(report.status || 'Recebida');
+    const noteValue = (report.managerNote || '').trim();
+    const managedBy = (report.managedByAgent || '').trim();
+    const canManage = isIcmbioInstitution();
+
+    card.innerHTML = `
+      <div class="external-report-header">
+        <strong>Protocolo ${report.protocol || '--'}</strong>
+        <span class="badge">${statusValue}</span>
+      </div>
+      <div class="external-report-meta">
+        <span><strong>Data:</strong> ${report.date || '--'} ${report.time ? `• ${report.time}` : ''}</span>
+        <span><strong>Local:</strong> ${report.location || '--'}</span>
+        <span><strong>Placa:</strong> ${report.vehiclePlate || '--'}</span>
+        <span><strong>Relato:</strong> ${report.observations || '--'}</span>
+      </div>
+      <div class="external-report-manage">
+        <select class="external-report-status" ${canManage ? '' : 'disabled'}>
+          <option value="Recebida" ${statusValue === 'Recebida' ? 'selected' : ''}>Recebida</option>
+          <option value="Em análise" ${statusValue === 'Em análise' ? 'selected' : ''}>Em análise</option>
+          <option value="Analisada" ${statusValue === 'Analisada' ? 'selected' : ''}>Analisada</option>
+        </select>
+        <input type="text" class="external-report-note" value="${noteValue.replace(/"/g, '&quot;')}" placeholder="Anotação da equipe" ${canManage ? '' : 'disabled'} />
+        <button type="button" class="ghost-btn external-report-save" ${canManage ? '' : 'disabled'}>Salvar</button>
+      </div>
+      <div class="external-report-meta">
+        <span><strong>Último agente:</strong> ${managedBy || '--'}</span>
+      </div>
+    `;
+
+    if (canManage) {
+      const statusSelect = card.querySelector('.external-report-status');
+      const noteInput = card.querySelector('.external-report-note');
+      const saveBtn = card.querySelector('.external-report-save');
+      if (saveBtn && statusSelect && noteInput) {
+        saveBtn.addEventListener('click', async () => {
+          saveBtn.disabled = true;
+          try {
+            const status = getPublicReportStatusValue(statusSelect.value);
+            const note = (noteInput.value || '').trim();
+            const docId = report.id || getPublicReportDocId(report.protocol || '');
+            if (!docId) throw new Error('Protocolo inválido.');
+
+            await db.collection(publicReportsCollection).doc(docId).set(
+              {
+                status,
+                managerNote: note,
+                managedByAgent: getLoggedAgentName() || '',
+                managedByInstitution: getInstitutionLabel(getLoggedInstitutionKey()) || '',
+                managedAt: new Date().toISOString(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+            report.status = status;
+            report.managerNote = note;
+            report.managedByAgent = getLoggedAgentName() || '';
+            showAlert(alertSuccess, `Denúncia ${report.protocol || ''} atualizada.`);
+            renderExternalReportsPanel();
+          } catch (error) {
+            showAlert(alertError, 'Não foi possível salvar a atualização da denúncia.');
+          } finally {
+            saveBtn.disabled = false;
+          }
+        });
+      }
+    }
+
+    externalReportsList.appendChild(card);
+  });
+};
+
+const refreshExternalReports = async () => {
+  if (!isIcmbioInstitution()) {
+    publicReports = [];
+    renderExternalReportsPanel();
+    return;
+  }
+  const remote = await loadPublicReportsFromFirestore();
+  const cached = loadPublicReportsFromCache();
+  const merged = new Map();
+  [...cached, ...remote].forEach((item) => {
+    const key = getPublicReportDocId(item.protocol || item.id || '');
+    if (!key) return;
+    merged.set(key, { ...item, id: item.id || key });
+  });
+  publicReports = Array.from(merged.values()).sort((a, b) => {
+    const av = (a.timestampIso || '').toString();
+    const bv = (b.timestampIso || '').toString();
+    return bv.localeCompare(av);
+  });
+  renderExternalReportsPanel();
+};
+
+const updateExternalReportsAccess = () => {
+  const canManage = isIcmbioInstitution();
+  if (toggleExternalReportsBtn) {
+    toggleExternalReportsBtn.classList.toggle('hidden', !canManage);
+  }
+  if (!canManage && externalReportsPanel) {
+    externalReportsPanel.classList.add('hidden');
+  }
+};
+
+const renderPublicTrackResult = (report, protocol) => {
+  if (!trackProtocolResult) return;
+  if (!report) {
+    trackProtocolResult.innerHTML = `<p>Protocolo ${protocol} não encontrado.</p>`;
+    return;
+  }
+
+  const status = getPublicReportStatusValue(report.status || 'Recebida');
+  const note = (report.managerNote || '').trim() || 'Sem recado no momento.';
+  const agent = (report.managedByAgent || '').trim() || '--';
+
+  trackProtocolResult.innerHTML = `
+    <p><strong>Protocolo:</strong> ${report.protocol || protocol}</p>
+    <p><strong>Status:</strong> ${status}</p>
+    <p><strong>Recado da equipe:</strong> ${note}</p>
+    <p><strong>Agente responsável:</strong> ${agent}</p>
+  `;
+};
+
+const findPublicReportByProtocol = async (protocolValue) => {
+  const protocol = normalizeProtocol(protocolValue);
+  if (!protocol) return null;
+  if (!db) return null;
+
+  const byId = await db.collection(publicReportsCollection).doc(getPublicReportDocId(protocol)).get();
+  if (byId.exists) {
+    const data = byId.data() || {};
+    if (data.reportType === 'public_denuncia') {
+      return { id: byId.id, ...data };
+    }
+  }
+
+  const query = await db
+    .collection(publicReportsCollection)
+    .where('reportType', '==', 'public_denuncia')
+    .where('protocol', '==', protocol)
+    .limit(1)
+    .get();
+
+  if (!query.empty) {
+    return { id: query.docs[0].id, ...query.docs[0].data() };
+  }
+
+  const cached = loadPublicReportsFromCache().find(
+    (item) => normalizeProtocol(item.protocol) === protocol
+  );
+  return cached || null;
+};
+
+const handleTrackProtocol = async () => {
+  const protocol = normalizeProtocol(trackProtocolInput?.value || '');
+  if (!protocol) {
+    if (trackProtocolResult) {
+      trackProtocolResult.innerHTML = '<p>Informe um protocolo para consulta.</p>';
+    }
+    return;
+  }
+
+  if (trackProtocolBtn) trackProtocolBtn.disabled = true;
+  if (trackProtocolResult) trackProtocolResult.innerHTML = '<p>Consultando...</p>';
+
+  try {
+    const report = await findPublicReportByProtocol(protocol);
+    renderPublicTrackResult(report, protocol);
+  } catch (error) {
+    if (trackProtocolResult) {
+      trackProtocolResult.innerHTML = '<p>Não foi possível consultar agora. Tente novamente.</p>';
+    }
+  } finally {
+    if (trackProtocolBtn) trackProtocolBtn.disabled = false;
+  }
+};
 
 const getCurrentLoginAgent = () => {
   const selectedInstitution = loginInstitution?.value || '';
@@ -617,6 +943,8 @@ const setLoggedUser = (agentName, institutionKey) => {
   agentSelect.value = agentName;
   agentSelect.readOnly = true;
   updateAgentName();
+  updateExternalReportsAccess();
+  refreshExternalReports();
 };
 
 const showEntryScreen = () => {
@@ -624,6 +952,10 @@ const showEntryScreen = () => {
   if (publicReportScreen) publicReportScreen.classList.add('hidden');
   if (loginScreen) loginScreen.classList.add('hidden');
   if (appShell) appShell.classList.add('hidden');
+  if (trackProtocolPanel) trackProtocolPanel.classList.add('hidden');
+  if (trackProtocolResult) trackProtocolResult.innerHTML = '';
+  if (trackProtocolInput) trackProtocolInput.value = '';
+  if (toggleTrackProtocolBtn) toggleTrackProtocolBtn.textContent = 'Acompanhar minha denúncia';
 };
 
 const showLoginScreen = () => {
@@ -655,6 +987,7 @@ const clearSession = () => {
   agentSelect.readOnly = false;
   updateLoginAgentMode();
   updateAgentName();
+  updateExternalReportsAccess();
 };
 
 const showView = (viewId) => {
@@ -709,12 +1042,16 @@ const loadRecordsFromFirestore = async () => {
   try {
     const snapshot = await db.collection('records').orderBy('timestamp', 'desc').get();
     firestoreReadBlocked = false;
-    return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
+      .filter((record) => record.reportType !== 'public_denuncia');
   } catch (error) {
     try {
       const snapshot = await db.collection('records').get();
       firestoreReadBlocked = false;
-      return snapshot.docs.map((doc) => ({ id: doc.id, photos: [], ...doc.data() }));
+      return snapshot.docs
+        .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
+        .filter((record) => record.reportType !== 'public_denuncia');
     } catch (fallbackError) {
       firestoreReadBlocked = true;
       return [];
@@ -1044,6 +1381,102 @@ const closePopup = () => {
   }
 };
 
+const toggleTrackProtocolPanel = () => {
+  if (!trackProtocolPanel) return;
+  const isHidden = trackProtocolPanel.classList.toggle('hidden');
+  if (toggleTrackProtocolBtn) {
+    toggleTrackProtocolBtn.textContent = isHidden
+      ? 'Acompanhar minha denúncia'
+      : 'Fechar acompanhamento';
+  }
+
+  if (!isHidden) {
+    if (trackProtocolInput) {
+      trackProtocolInput.focus();
+    }
+    trackProtocolPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (trackProtocolResult) {
+    trackProtocolResult.innerHTML = '';
+  }
+};
+
+const closePublicProtocolModal = () => {
+  if (!publicProtocolModal) return;
+  publicProtocolModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  latestPublicProtocol = '';
+  if (copyProtocolBtn) {
+    copyProtocolBtn.disabled = false;
+    copyProtocolBtn.textContent = 'Copiar protocolo';
+  }
+  showPublicReportScreen();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const fallbackCopyText = (text) => {
+  const temp = document.createElement('textarea');
+  temp.value = text;
+  temp.setAttribute('readonly', 'true');
+  temp.style.position = 'fixed';
+  temp.style.opacity = '0';
+  document.body.appendChild(temp);
+  temp.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(temp);
+  return copied;
+};
+
+const copyPublicProtocol = async () => {
+  if (!latestPublicProtocol) return;
+
+  let copied = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(latestPublicProtocol);
+      copied = true;
+    }
+  } catch (error) {
+    copied = false;
+  }
+
+  if (!copied) {
+    copied = fallbackCopyText(latestPublicProtocol);
+  }
+
+  if (copyProtocolBtn) {
+    copyProtocolBtn.textContent = copied ? 'Protocolo copiado' : 'Copiar novamente';
+  }
+
+  if (publicProtocolMessage) {
+    publicProtocolMessage.textContent = copied
+      ? 'Protocolo copiado. Guarde este número para acompanhar sua denúncia.'
+      : 'Não foi possível copiar automaticamente. Selecione o protocolo e copie manualmente.';
+  }
+};
+
+const openPublicProtocolModal = (protocol) => {
+  if (!publicProtocolModal) return;
+  latestPublicProtocol = String(protocol || '').trim();
+  if (publicProtocolMessage) {
+    publicProtocolMessage.textContent =
+      'Sua denúncia foi registrada. Guarde o protocolo para acompanhar a análise posteriormente.';
+  }
+  if (publicProtocolValue) {
+    publicProtocolValue.textContent = latestPublicProtocol;
+  }
+  if (copyProtocolBtn) {
+    copyProtocolBtn.disabled = !latestPublicProtocol;
+    copyProtocolBtn.textContent = 'Copiar protocolo';
+  }
+  publicProtocolModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  if (copyProtocolBtn && !copyProtocolBtn.disabled) {
+    copyProtocolBtn.focus();
+  } else if (closeProtocolModalBtn) {
+    closeProtocolModalBtn.focus();
+  }
+};
+
 const openPhotoModal = (src, altText = 'Foto do veículo') => {
   if (!photoModal || !photoModalImage) return;
   photoModalImage.src = src;
@@ -1073,6 +1506,22 @@ if (actionUnavailableModal) {
   });
 }
 
+if (publicProtocolModal) {
+  publicProtocolModal.addEventListener('click', (event) => {
+    if (event.target === publicProtocolModal) {
+      closePublicProtocolModal();
+    }
+  });
+}
+
+if (copyProtocolBtn) {
+  copyProtocolBtn.addEventListener('click', copyPublicProtocol);
+}
+
+if (closeProtocolModalBtn) {
+  closeProtocolModalBtn.addEventListener('click', closePublicProtocolModal);
+}
+
 if (photoModalClose) {
   photoModalClose.addEventListener('click', closePhotoModal);
 }
@@ -1087,6 +1536,10 @@ if (photoModal) {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    if (publicProtocolModal && !publicProtocolModal.classList.contains('hidden')) {
+      closePublicProtocolModal();
+      return;
+    }
     if (actionUnavailableModal && !actionUnavailableModal.classList.contains('hidden')) {
       closePopup();
       return;
@@ -1439,6 +1892,100 @@ const generatePublicProtocol = () => {
   return `DEN-${stamp}-${random}`;
 };
 
+const generatePublicReportPdfPayload = (payload) => {
+  if (!jsPDF) return null;
+
+  const publicRecord = {
+    occurrenceNumber: payload.protocol || 'SEM_PROTOCOLO',
+    date: payload.date || '',
+    time: payload.time || '',
+    location: payload.location || '',
+    institution: 'DENUNCIA PUBLICA',
+    agent: 'DENUNCIANTE',
+    infractorName: payload.infractorName || '',
+    infractorDoc: payload.infractorDoc || '',
+    whatsapp: payload.reporterContact || '',
+    vehiclePlate: payload.vehiclePlate || '',
+    vehicleModel: payload.vehicleModel || '',
+    vehicleColor: payload.vehicleColor || '',
+    vehicleYear: payload.vehicleYear || '',
+    observations: payload.observations || '',
+  };
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  renderRecordToDoc(doc, publicRecord, {
+    includeComunicado: false,
+    reportTitle: 'RELATORIO DE DENUNCIA PUBLICA',
+  });
+
+  const photos = Array.isArray(payload.photos) ? payload.photos : [];
+  photos.forEach((photo, index) => {
+    if (!photo?.data || typeof photo.data !== 'string' || !photo.data.startsWith('data:image')) return;
+
+    doc.addPage('a4', 'portrait');
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const marginLeft = 15;
+    const marginRight = 15;
+    const contentWidth = pageWidth - marginLeft - marginRight;
+
+    let yPos = 20;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ANEXO FOTOGRAFICO DA DENUNCIA', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Protocolo: ${publicRecord.occurrenceNumber}`, marginLeft, yPos);
+    doc.text(`Imagem ${index + 1} de ${photos.length}`, pageWidth - marginRight, yPos, { align: 'right' });
+    yPos += 8;
+
+    const maxImageWidth = contentWidth;
+    const maxImageHeight = 190;
+    let drawWidth = maxImageWidth;
+    let drawHeight = maxImageHeight;
+
+    try {
+      const props = doc.getImageProperties(photo.data);
+      if (props?.width && props?.height) {
+        const ratio = Math.min(maxImageWidth / props.width, maxImageHeight / props.height);
+        drawWidth = props.width * ratio;
+        drawHeight = props.height * ratio;
+      }
+    } catch (_) {
+      drawWidth = maxImageWidth;
+      drawHeight = maxImageHeight;
+    }
+
+    const imageX = (pageWidth - drawWidth) / 2;
+    const imageY = yPos;
+    const format = photo.data.includes('image/png') ? 'PNG' : 'JPEG';
+    doc.addImage(photo.data, format, imageX, imageY, drawWidth, drawHeight, undefined, 'MEDIUM');
+
+    const legendY = imageY + drawHeight + 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Legenda:', marginLeft, legendY);
+    doc.setFont('helvetica', 'normal');
+    const legendText = (photo.name || '').trim() || `Foto ${index + 1}`;
+    const legendLines = doc.splitTextToSize(legendText, contentWidth);
+    doc.text(legendLines, marginLeft, legendY + 5);
+  });
+
+  const dataUri = doc.output('datauristring') || '';
+  const parts = dataUri.split(',');
+  const pdfBase64 = parts.length > 1 ? parts[1] : '';
+  if (!pdfBase64 || pdfBase64.length > maxEmailPdfBase64Length) {
+    return null;
+  }
+
+  return {
+    emailPdfBase64: pdfBase64,
+    emailPdfFileName: `Denuncia_Publica_${publicRecord.occurrenceNumber}.pdf`,
+  };
+};
+
 const submitPublicReport = async () => {
   if (!publicReportConsentInput?.checked) {
     if (publicReportError) {
@@ -1465,11 +2012,40 @@ const submitPublicReport = async () => {
     source: 'publico',
     status: 'nova',
     targetSheet: 'DENUNCIAS_PUBLICAS',
+    sendEmailNotification: true,
+    notifyEmail: publicReportNotificationEmail,
+    notificationEmail: publicReportNotificationEmail,
+    destinationEmail: publicReportNotificationEmail,
+    notificationType: 'denuncia_publica',
     timestamp: new Date().toISOString(),
   };
 
+  const emailPdfPayload = generatePublicReportPdfPayload(payload);
+  if (emailPdfPayload?.emailPdfBase64) {
+    payload.emailPdfBase64 = emailPdfPayload.emailPdfBase64;
+    payload.emailPdfFileName = emailPdfPayload.emailPdfFileName;
+  }
+
   const hasUsefulInfo = Object.entries(payload).some(([key, value]) => {
-    if (['reportType', 'source', 'status', 'targetSheet', 'timestamp', 'protocol'].includes(key)) return false;
+    if (
+      [
+        'reportType',
+        'source',
+        'status',
+        'targetSheet',
+        'timestamp',
+        'protocol',
+        'sendEmailNotification',
+        'notifyEmail',
+        'notificationEmail',
+        'destinationEmail',
+        'notificationType',
+        'emailPdfBase64',
+        'emailPdfFileName',
+      ].includes(key)
+    ) {
+      return false;
+    }
     if (Array.isArray(value)) return value.length > 0;
     return String(value || '').trim().length > 0;
   });
@@ -1496,28 +2072,35 @@ const submitPublicReport = async () => {
       successElement: publicReportSuccess,
       successMessage: `Denúncia enviada com sucesso. Protocolo: ${payload.protocol}`,
     });
+
+    try {
+      upsertPublicReportCache(payload);
+      await savePublicReportToFirestore(payload);
+      if (isIcmbioInstitution()) {
+        refreshExternalReports();
+      }
+    } catch (error) {
+      // mantém no cache local mesmo se o Firestore falhar
+    }
+
     updatePublicSavingProgress(100, 'Denúncia enviada com sucesso!');
     clearPublicReportForm();
     setTimeout(() => {
       setPublicSavingState(false);
       updatePublicSavingProgress(0, 'Preparando envio da denúncia...');
-      showPopup(
-        `Obrigado pelo envio da denúncia. Informamos que ela foi registrada sob o número de protocolo ${payload.protocol} e será devidamente analisada, sendo adotadas as providências cabíveis.`,
-        {
-          title: 'Denúncia registrada',
-          buttonLabel: 'Ciente',
-          onClose: () => {
-            showPublicReportScreen();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          },
-        }
-      );
+      openPublicProtocolModal(payload.protocol);
     }, 350);
   } catch (error) {
     setPublicSavingState(false);
     updatePublicSavingProgress(0, 'Preparando envio da denúncia...');
     if (publicReportError) {
-      showAlert(publicReportError, 'Não foi possível enviar agora. Tente novamente em instantes.');
+      const serverMessage = (error && error.message ? String(error.message) : '').trim();
+      showAlert(
+        publicReportError,
+        serverMessage
+          ? `Não foi possível enviar: ${serverMessage}`
+          : 'Não foi possível enviar agora. Tente novamente em instantes.'
+      );
     }
   } finally {
     if (submitPublicReportBtn) {
@@ -1551,6 +2134,16 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
         source: recordData.source || 'publico',
         status: recordData.status || 'nova',
         targetSheet: recordData.targetSheet || 'DENUNCIAS_PUBLICAS',
+        sendEmailNotification:
+          typeof recordData.sendEmailNotification === 'boolean'
+            ? recordData.sendEmailNotification
+            : true,
+        notifyEmail: recordData.notifyEmail || publicReportNotificationEmail,
+        notificationEmail: recordData.notificationEmail || publicReportNotificationEmail,
+        destinationEmail: recordData.destinationEmail || publicReportNotificationEmail,
+        notificationType: recordData.notificationType || 'denuncia_publica',
+        emailPdfBase64: recordData.emailPdfBase64 || '',
+        emailPdfFileName: recordData.emailPdfFileName || '',
         protocol: recordData.protocol || '',
         date: recordData.date || '',
         time: recordData.time || '',
@@ -1587,6 +2180,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
         photoUrls: recordData.photoUrls || [],
       };
 
+  let requestError = null;
   try {
     const response = await withTimeout(
       fetch(scriptUrl, {
@@ -1601,23 +2195,35 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
       'Timeout ao enviar para planilha online.'
     );
 
-    if (response.ok) {
-      const responseText = await response.text();
-      const result = (() => {
-        try {
-          return JSON.parse(responseText || '{}');
-        } catch (error) {
-          return null;
-        }
-      })();
-      if (successElement) {
-        showAlert(successElement, successMessage);
-      }
-      const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
-      return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+
+    const responseText = await response.text();
+    const result = (() => {
+      try {
+        return JSON.parse(responseText || '{}');
+      } catch (error) {
+        return null;
+      }
+    })();
+
+    if (result && result.success === false) {
+      throw new Error(result.error || 'Erro retornado pelo Apps Script.');
+    }
+
+    if (successElement) {
+      showAlert(successElement, successMessage);
+    }
+
+    const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
+    return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
   } catch (error) {
-    // Fallback para envio sem CORS caso o endpoint não esteja configurado para resposta ao navegador
+    requestError = error;
+  }
+
+  if (isPublicReport) {
+    throw requestError || new Error('Falha ao enviar denúncia pública para o backend.');
   }
 
   fetch(scriptUrl, {
@@ -2722,10 +3328,104 @@ const renderRecordToDoc = (doc, record, options = {}) => {
   );
 };
 
-// Função para preparar links de fotos do registro (mantém PDF em uma página por ocorrência)
+const appendRecordPhotoPages = (doc, record, pdfPhotos = []) => {
+  if (!Array.isArray(pdfPhotos) || !pdfPhotos.length) return;
+
+  pdfPhotos.forEach((photo, index) => {
+    if (!photo?.dataUrl || typeof photo.dataUrl !== 'string') return;
+
+    doc.addPage('a4', 'portrait');
+
+    const pageWidth = 210;
+    const marginLeft = 15;
+    const marginRight = 15;
+    const contentWidth = pageWidth - marginLeft - marginRight;
+
+    let yPos = 20;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ANEXO FOTOGRAFICO DA OCORRENCIA', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 8;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Ocorrencia: ${record.occurrenceNumber || '--'}`, marginLeft, yPos);
+    doc.text(`Imagem ${index + 1} de ${pdfPhotos.length}`, pageWidth - marginRight, yPos, {
+      align: 'right',
+    });
+    yPos += 8;
+
+    const maxImageWidth = contentWidth;
+    const maxImageHeight = 190;
+    let drawWidth = maxImageWidth;
+    let drawHeight = maxImageHeight;
+
+    try {
+      const props = doc.getImageProperties(photo.dataUrl);
+      if (props?.width && props?.height) {
+        const ratio = Math.min(maxImageWidth / props.width, maxImageHeight / props.height);
+        drawWidth = props.width * ratio;
+        drawHeight = props.height * ratio;
+      }
+    } catch (_) {
+      drawWidth = maxImageWidth;
+      drawHeight = maxImageHeight;
+    }
+
+    const imageX = (pageWidth - drawWidth) / 2;
+    const imageY = yPos;
+    const format = photo.dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+    doc.addImage(photo.dataUrl, format, imageX, imageY, drawWidth, drawHeight, undefined, 'MEDIUM');
+
+    const legendY = imageY + drawHeight + 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Legenda:', marginLeft, legendY);
+    doc.setFont('helvetica', 'normal');
+    const legendText = (photo.caption || '').trim() || `Foto ${index + 1}`;
+    const legendLines = doc.splitTextToSize(legendText, contentWidth);
+    doc.text(legendLines, marginLeft, legendY + 5);
+  });
+};
+
+// Função para preparar links e imagens das fotos do registro para o PDF
 const prepareRecordPhotos = async (record) => {
   const externalLinks = collectRecordPhotoLinks(record);
-  return { ...record, photos: [], externalPhotoLinks: externalLinks };
+  const preparedPhotos = [];
+
+  if (Array.isArray(record.photos)) {
+    record.photos.forEach((photo, index) => {
+      if (photo?.data && typeof photo.data === 'string' && photo.data.startsWith('data:image')) {
+        preparedPhotos.push({
+          dataUrl: photo.data,
+          caption: photo.name || `Foto ${index + 1}`,
+        });
+      }
+    });
+  }
+
+  if (preparedPhotos.length < maxRecordPdfPhotos) {
+    for (const [index, link] of externalLinks.entries()) {
+      if (preparedPhotos.length >= maxRecordPdfPhotos) break;
+      try {
+        const dataUrl = await fetchImageAsDataUrl(link);
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+          preparedPhotos.push({
+            dataUrl,
+            caption: `Foto online ${index + 1}`,
+          });
+        }
+      } catch (_) {
+        // Se alguma foto online falhar, segue com as demais
+      }
+    }
+  }
+
+  return {
+    ...record,
+    externalPhotoLinks: externalLinks,
+    pdfPhotos: preparedPhotos.slice(0, maxRecordPdfPhotos),
+  };
 };
 
 const generatePDFBlob = async (record) => {
@@ -2736,6 +3436,7 @@ const generatePDFBlob = async (record) => {
   
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   renderRecordToDoc(doc, preparedRecord);
+  appendRecordPhotoPages(doc, preparedRecord, preparedRecord.pdfPhotos || []);
   return doc.output('blob');
 };
 
@@ -3450,6 +4151,7 @@ window.addEventListener('load', () => {
         showView('dashboardView');
       } else {
         showEntryScreen();
+        updateExternalReportsAccess();
       }
 
       const params = new URLSearchParams(window.location.search);
@@ -3469,6 +4171,7 @@ window.addEventListener('load', () => {
       populateLoginAgents();
       updateLoginAgentMode();
       showEntryScreen();
+      updateExternalReportsAccess();
     }
   })();
 });
@@ -3606,6 +4309,10 @@ if (openLoginBtn) {
   });
 }
 
+if (toggleTrackProtocolBtn) {
+  toggleTrackProtocolBtn.addEventListener('click', toggleTrackProtocolPanel);
+}
+
 if (backFromPublicReportBtn) {
   backFromPublicReportBtn.addEventListener('click', () => {
     showEntryScreen();
@@ -3676,6 +4383,30 @@ if (toggleChartsBtn && dashboardChartsPanel) {
     toggleChartsBtn.textContent = isHidden ? 'Mostrar gráficos' : 'Ocultar gráficos';
     if (!isHidden) {
       updateDashboard();
+    }
+  });
+}
+
+if (toggleExternalReportsBtn && externalReportsPanel) {
+  toggleExternalReportsBtn.addEventListener('click', async () => {
+    const isHidden = externalReportsPanel.classList.toggle('hidden');
+    toggleExternalReportsBtn.textContent = isHidden ? 'Denúncias externas' : 'Ocultar denúncias externas';
+    if (!isHidden) {
+      await refreshExternalReports();
+      externalReportsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+}
+
+if (trackProtocolBtn) {
+  trackProtocolBtn.addEventListener('click', handleTrackProtocol);
+}
+
+if (trackProtocolInput) {
+  trackProtocolInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleTrackProtocol();
     }
   });
 }

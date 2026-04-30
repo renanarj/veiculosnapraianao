@@ -15,6 +15,9 @@
   <body>
     <div id="entryScreen" class="auth-screen">
       <div class="auth-card entry-card">
+        <div class="entry-top-actions">
+          <button type="button" id="toggleTrackProtocolBtn" class="ghost-btn entry-track-toggle-btn">Acompanhar minha denúncia</button>
+        </div>
         <div class="auth-brand">
           <img src="/logo vpn.png" alt="Logo VPN" class="logo" />
         </div>
@@ -33,6 +36,16 @@
         <div class="entry-actions">
           <button type="button" id="openPublicReportBtn">Denuncie agora</button>
           <button type="button" id="openLoginBtn" class="ghost-btn entry-secondary-btn">Entrar no sistema</button>
+        </div>
+
+        <div id="trackProtocolPanel" class="public-track-box hidden">
+          <h3>Acompanhar minha denúncia</h3>
+          <p>Digite o protocolo para consultar o status atualizado pela equipe.</p>
+          <div class="public-track-row">
+            <input type="text" id="trackProtocolInput" placeholder="Ex.: DEN-20260430-ABCDE" />
+            <button type="button" id="trackProtocolBtn" class="ghost-btn">Consultar</button>
+          </div>
+          <div id="trackProtocolResult" class="public-track-result"></div>
         </div>
       </div>
     </div>
@@ -59,11 +72,7 @@
 
           <div class="form-group">
             <label for="publicLocation">Local da ocorrência</label>
-            <div class="location-container">
-              <input type="text" id="publicLocation" name="location" placeholder="Ex.: Praia Atalaia, próximo ao posto" />
-              <button type="button" id="publicGetLocationBtn">Obter Coordenadas</button>
-            </div>
-            <small id="publicLocationError" class="location-error" style="display:block; margin-top:4px;"></small>
+            <input type="text" id="publicLocation" name="location" placeholder="Praia de Atalaia, próximo ao local &quot;x&quot;" />
           </div>
 
           <div class="two-columns">
@@ -88,20 +97,14 @@
             </div>
           </div>
 
-          <div class="two-columns">
-            <div class="form-group">
-              <label for="publicInfractorName">Nome do condutor (se souber)</label>
-              <input type="text" id="publicInfractorName" name="infractorName" placeholder="Nome do condutor" />
-            </div>
-            <div class="form-group">
-              <label for="publicInfractorDoc">CPF (se souber)</label>
-              <input type="text" id="publicInfractorDoc" name="infractorDoc" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" />
-            </div>
+          <div class="form-group">
+            <label for="publicInfractorName">Nome do condutor (se souber)</label>
+            <input type="text" id="publicInfractorName" name="infractorName" placeholder="Nome do condutor" />
           </div>
 
           <div class="form-group">
             <label for="publicObservations">Relato da denúncia</label>
-            <textarea id="publicObservations" name="observations" rows="4" maxlength="1000" placeholder="Descreva o que ocorreu"></textarea>
+            <textarea id="publicObservations" name="observations" rows="4" maxlength="1000" placeholder="Descreva o que ocorreu de forma mais detalhada possível, com todas as informações que puder, com nomes, locais, documentos, caso possuir"></textarea>
           </div>
 
           <div class="form-group">
@@ -142,6 +145,25 @@
             </div>
             <span id="publicSavingProgressPercent" class="saving-progress-percent">0%</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="publicProtocolModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publicProtocolTitle"
+      aria-describedby="publicProtocolMessage"
+    >
+      <div class="modal-card">
+        <h3 id="publicProtocolTitle">Denúncia registrada</h3>
+        <p id="publicProtocolMessage">Sua denúncia foi registrada e será analisada pela equipe.</p>
+        <p id="publicProtocolValue" class="public-protocol-value"></p>
+        <div class="modal-actions public-protocol-actions">
+          <button type="button" id="copyProtocolBtn" class="ghost-btn">Copiar protocolo</button>
+          <button type="button" id="closeProtocolModalBtn">Fechar</button>
         </div>
       </div>
     </div>
@@ -241,6 +263,7 @@
           <div class="filters-toggle">
             <button type="button" id="toggleFiltersBtn" class="ghost-btn">Mostrar filtros</button>
             <button type="button" id="toggleChartsBtn" class="ghost-btn">Mostrar gráficos</button>
+            <button type="button" id="toggleExternalReportsBtn" class="ghost-btn hidden">Denúncias externas</button>
           </div>
 
           <div id="dashboardFiltersPanel" class="hidden">
@@ -339,6 +362,16 @@
                   <div class="chart-wrap"><canvas id="chartRecurrenceRate"></canvas></div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div id="externalReportsPanel" class="hidden">
+            <div class="card">
+              <div class="filters-header">
+                <h3>Denúncias Externas</h3>
+                <span id="externalReportsCount" class="card-label">0 denúncias</span>
+              </div>
+              <div id="externalReportsList" class="external-reports-list"></div>
             </div>
           </div>
 
