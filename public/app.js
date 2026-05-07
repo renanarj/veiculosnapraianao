@@ -76,7 +76,6 @@ const appShell = document.getElementById('appShell');
 const loginForm = document.getElementById('loginForm');
 const loginInstitution = document.getElementById('loginInstitution');
 const loginAgent = document.getElementById('loginAgent');
-const loginAgentCustom = document.getElementById('loginAgentCustom');
 const loginAgentLabel = document.getElementById('loginAgentLabel');
 const loginPassword = document.getElementById('loginPassword');
 const loginError = document.getElementById('loginError');
@@ -109,11 +108,28 @@ const clearFiltersBtn = document.getElementById('clearFiltersBtn');
 const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
 const toggleChartsBtn = document.getElementById('toggleChartsBtn');
 const toggleExternalReportsBtn = document.getElementById('toggleExternalReportsBtn');
+const toggleAdminPanelBtn = document.getElementById('toggleAdminPanelBtn');
 const dashboardFiltersPanel = document.getElementById('dashboardFiltersPanel');
 const dashboardChartsPanel = document.getElementById('dashboardChartsPanel');
 const externalReportsPanel = document.getElementById('externalReportsPanel');
 const externalReportsList = document.getElementById('externalReportsList');
 const externalReportsCount = document.getElementById('externalReportsCount');
+const adminPanel = document.getElementById('adminPanel');
+const adminInstitutionFilter = document.getElementById('adminInstitutionFilter');
+const adminUsersByInstitution = document.getElementById('adminUsersByInstitution');
+const adminUserForm = document.getElementById('adminUserForm');
+const adminFormTitle = document.getElementById('adminFormTitle');
+const adminEditingUserId = document.getElementById('adminEditingUserId');
+const adminUserInstitution = document.getElementById('adminUserInstitution');
+const adminUserName = document.getElementById('adminUserName');
+const adminUserPassword = document.getElementById('adminUserPassword');
+const adminPasswordHint = document.getElementById('adminPasswordHint');
+const adminUserIsAdmin = document.getElementById('adminUserIsAdmin');
+const adminUserCanVerify = document.getElementById('adminUserCanVerify');
+const adminSaveUserBtn = document.getElementById('adminSaveUserBtn');
+const adminCancelEditBtn = document.getElementById('adminCancelEditBtn');
+const adminUserSuccess = document.getElementById('adminUserSuccess');
+const adminUserError = document.getElementById('adminUserError');
 const byAgentList = document.getElementById('byAgentList');
 const byMonthList = document.getElementById('byMonthList');
 const duplicateDriversList = document.getElementById('duplicateDriversList');
@@ -164,12 +180,12 @@ let stream = null;
 let photosData = [];
 let publicReportPhotos = [];
 let publicReports = [];
+let managedUsers = [];
 let pendingDeleteIndex = -1;
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
 let latestPublicProtocol = '';
 const usedOccurrenceNumbers = new Set();
-const adminAgentName = 'RENAN ARAUJO E SILVA';
 const noPlateLabel = 'VEÍCULO SEM PLACA';
 const recurrenceWindowMs = 2 * 60 * 60 * 1000;
 const publicReportNotificationEmail = 'apa.delta@icmbio.gov.br';
@@ -178,16 +194,15 @@ const maxRecordPdfPhotos = 8;
 const publicReportsCollection = 'records';
 const publicReportsCacheKey = 'publicReportsCache';
 const publicReportsSeenKey = 'publicReportsSeenProtocols';
+const usersCollection = 'system_users';
+const usersCacheKey = 'systemUsersCache';
+const sessionUserIdKey = 'loggedUserId';
+const adminNames = new Set(['RENAN ARAUJO E SILVA', 'ADRIANO RICARDO DAMATO ROCHA DE SOUZA']);
 const institutions = {
   icmbio: 'Instituto Chico Mendes - ICMBio',
   semarh: 'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH',
   pmpi: 'Polícia Militar do Estado do Piauí - PMPI',
   prefeitura: 'Prefeitura Municipal de Luís Correia',
-};
-const institutionPasswords = {
-  semarh: 'semarh2026',
-  pmpi: 'pmpi2026',
-  prefeitura: 'prefeitura2026',
 };
 const icmbioAgents = [
   'ADRIANO RICARDO DAMATO ROCHA DE SOUZA',
@@ -288,10 +303,246 @@ const syncVehiclePlateState = () => {
 
 const getLoggedAgentName = () => localStorage.getItem(sessionKey) || '';
 const getLoggedInstitutionKey = () => localStorage.getItem(sessionInstitutionKey) || '';
+const getLoggedUserId = () => localStorage.getItem(sessionUserIdKey) || '';
 
 const getInstitutionLabel = (institutionKey) => institutions[institutionKey] || '';
 
-const isIcmbioInstitution = () => getLoggedInstitutionKey() === 'icmbio';
+const normalizeUpperText = (value) =>
+  (value || '')
+    .toString()
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const toHex = (buffer) =>
+  Array.from(new Uint8Array(buffer))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+
+const randomSalt = (length = 16) => {
+  const bytes = new Uint8Array(length);
+  window.crypto.getRandomValues(bytes);
+  return toHex(bytes);
+};
+
+const hashPassword = async (password, salt) => {
+  const payload = new TextEncoder().encode(`${salt}:${password}`);
+  const digest = await window.crypto.subtle.digest('SHA-256', payload);
+  return toHex(digest);
+};
+
+const loadUsersFromCache = () => {
+  const raw = localStorage.getItem(usersCacheKey);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveUsersToCache = (users = []) => {
+  localStorage.setItem(usersCacheKey, JSON.stringify(users));
+};
+
+const makeUserDocId = (institutionKey, name) =>
+  `${institutionKey}_${normalizeUpperText(name).replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
+
+const createManagedUserRecord = async (
+  name,
+  institutionKey,
+  plainPassword,
+  { id = '', isAdmin = false, canVerifyExternalReports = false } = {}
+) => {
+  const normalizedName = normalizeUpperText(name);
+  const salt = randomSalt();
+  const passwordHash = await hashPassword(plainPassword, salt);
+  const userId = id || makeUserDocId(institutionKey, normalizedName);
+  return {
+    id: userId,
+    name: normalizedName,
+    institutionKey,
+    institutionLabel: getInstitutionLabel(institutionKey),
+    passwordSalt: salt,
+    passwordHash,
+    isAdmin: Boolean(isAdmin),
+    canVerifyExternalReports: Boolean(canVerifyExternalReports),
+    active: true,
+  };
+};
+
+const getDefaultUserSeeds = () => {
+  const defaults = [];
+  icmbioAgents.forEach((name) => {
+    const firstName = normalizeText((name || '').split(' ')[0] || '');
+    defaults.push({
+      name,
+      institutionKey: 'icmbio',
+      password: `${firstName}2026`,
+      isAdmin: adminNames.has(normalizeUpperText(name)),
+      canVerifyExternalReports: adminNames.has(normalizeUpperText(name)),
+    });
+  });
+
+  defaults.push(
+    {
+      name: 'EQUIPE SEMARH',
+      institutionKey: 'semarh',
+      password: 'semarh2026',
+      isAdmin: false,
+      canVerifyExternalReports: false,
+    },
+    {
+      name: 'EQUIPE PMPI',
+      institutionKey: 'pmpi',
+      password: 'pmpi2026',
+      isAdmin: false,
+      canVerifyExternalReports: false,
+    },
+    {
+      name: 'EQUIPE PREFEITURA',
+      institutionKey: 'prefeitura',
+      password: 'prefeitura2026',
+      isAdmin: false,
+      canVerifyExternalReports: false,
+    }
+  );
+
+  return defaults;
+};
+
+const ensureManagedUsersSeed = async (existingUsers = []) => {
+  if (existingUsers.length) return existingUsers;
+  const seeds = getDefaultUserSeeds();
+  const created = [];
+
+  for (const seed of seeds) {
+    const user = await createManagedUserRecord(seed.name, seed.institutionKey, seed.password, {
+      isAdmin: seed.isAdmin,
+      canVerifyExternalReports: seed.canVerifyExternalReports,
+    });
+    created.push(user);
+  }
+
+  if (db) {
+    for (const user of created) {
+      try {
+        await db
+          .collection(usersCollection)
+          .doc(user.id)
+          .set(
+            {
+              ...user,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+      } catch {
+        // continua com cache local em caso de falha pontual
+      }
+    }
+  }
+
+  return created;
+};
+
+const loadManagedUsersFromFirestore = async () => {
+  if (!db) return [];
+  try {
+    const snapshot = await db.collection(usersCollection).get();
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((user) => user && user.name && user.institutionKey);
+  } catch {
+    return [];
+  }
+};
+
+const initManagedUsers = async () => {
+  const remoteUsers = await loadManagedUsersFromFirestore();
+  const fromRemote = remoteUsers.map((user) => ({
+    ...user,
+    name: normalizeUpperText(user.name),
+    institutionLabel: getInstitutionLabel(user.institutionKey),
+    isAdmin: Boolean(user.isAdmin),
+    canVerifyExternalReports: Boolean(user.canVerifyExternalReports),
+    active: user.active !== false,
+  }));
+
+  const preparedUsers = await ensureManagedUsersSeed(fromRemote);
+  managedUsers = (preparedUsers.length ? preparedUsers : loadUsersFromCache()).map((user) => {
+    const shouldBeAdmin = adminNames.has(normalizeUpperText(user.name));
+    if (!shouldBeAdmin) return user;
+    return {
+      ...user,
+      isAdmin: true,
+      canVerifyExternalReports: true,
+    };
+  });
+
+  if (db) {
+    const usersToEnforce = managedUsers.filter((user) => adminNames.has(normalizeUpperText(user.name)));
+    for (const user of usersToEnforce) {
+      try {
+        await db
+          .collection(usersCollection)
+          .doc(user.id)
+          .set(
+            {
+              isAdmin: true,
+              canVerifyExternalReports: true,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+      } catch {
+        // segue sem bloquear carregamento
+      }
+    }
+  }
+
+  saveUsersToCache(managedUsers);
+};
+
+const getLoggedManagedUser = () => {
+  const byId = managedUsers.find((user) => user.id === getLoggedUserId());
+  if (byId) return byId;
+  const loggedName = normalizeUpperText(getLoggedAgentName());
+  const loggedInstitution = getLoggedInstitutionKey();
+  return managedUsers.find(
+    (user) =>
+      normalizeUpperText(user.name) === loggedName &&
+      user.institutionKey === loggedInstitution &&
+      user.active !== false
+  );
+};
+
+const isAdminUser = () => Boolean(getLoggedManagedUser()?.isAdmin);
+const canManageExternalReports = () => {
+  const user = getLoggedManagedUser();
+  return Boolean(user?.isAdmin || user?.canVerifyExternalReports);
+};
+
+const verifyManagedUserPassword = async (user, plainPassword) => {
+  if (!user || !plainPassword) return false;
+  if (!user.passwordSalt || !user.passwordHash) return false;
+  const hash = await hashPassword(plainPassword, user.passwordSalt);
+  return hash === user.passwordHash;
+};
+
+const getCurrentLoginAgent = () => (loginAgent?.value || '').trim();
+
+const findManagedUser = (institutionKey, agentName) => {
+  const normalizedName = normalizeUpperText(agentName);
+  return managedUsers.find(
+    (user) =>
+      user.institutionKey === institutionKey &&
+      normalizeUpperText(user.name) === normalizedName &&
+      user.active !== false
+  );
+};
 
 const normalizeProtocol = (value) =>
   (value || '')
@@ -393,7 +644,7 @@ const getUnreadPublicReportsCount = (reports = []) => {
 };
 
 const updateExternalReportsToggleLabel = () => {
-  if (!toggleExternalReportsBtn || !isIcmbioInstitution()) return;
+  if (!toggleExternalReportsBtn || !canManageExternalReports()) return;
   const isOpen = externalReportsPanel && !externalReportsPanel.classList.contains('hidden');
   const unreadCount = isOpen ? 0 : getUnreadPublicReportsCount(publicReports);
   const baseLabel = isOpen ? 'Ocultar denúncias externas' : 'Denúncias externas';
@@ -482,7 +733,7 @@ const renderExternalReportsPanel = () => {
     const statusValue = getPublicReportStatusValue(report.status || 'Recebida');
     const noteValue = (report.managerNote || '').trim();
     const managedBy = (report.managedByAgent || '').trim();
-    const canManage = isIcmbioInstitution();
+    const canManage = canManageExternalReports();
 
     card.innerHTML = `
       <div class="external-report-header">
@@ -573,7 +824,7 @@ const renderExternalReportsPanel = () => {
 };
 
 const refreshExternalReports = async () => {
-  if (!isIcmbioInstitution()) {
+  if (!canManageExternalReports()) {
     publicReports = [];
     renderExternalReportsPanel();
     return;
@@ -596,7 +847,7 @@ const refreshExternalReports = async () => {
 };
 
 const updateExternalReportsAccess = () => {
-  const canManage = isIcmbioInstitution();
+  const canManage = canManageExternalReports();
   if (toggleExternalReportsBtn) {
     toggleExternalReportsBtn.classList.toggle('hidden', !canManage);
   }
@@ -683,31 +934,11 @@ const handleTrackProtocol = async () => {
   }
 };
 
-const getCurrentLoginAgent = () => {
-  const selectedInstitution = loginInstitution?.value || '';
-  if (selectedInstitution === 'icmbio') {
-    return (loginAgent?.value || '').trim();
-  }
-  return (loginAgentCustom?.value || '').trim().toUpperCase();
-};
-
-const getExpectedPassword = (institutionKey, agentName) => {
-  if (institutionKey === 'icmbio') {
-    return getAgentPassword(agentName);
-  }
-  return institutionPasswords[institutionKey] || '';
-};
-
 const canManageRecord = (record) => {
   const logged = normalizeText(getLoggedAgentName());
   if (!logged) return false;
-  if (logged === normalizeText(adminAgentName)) return true;
+  if (isAdminUser()) return true;
   return normalizeText(record.agent) === logged;
-};
-
-const getAgentPassword = (agentName) => {
-  const firstName = normalizeText(agentName.split(' ')[0] || '');
-  return `${firstName}2026`;
 };
 
 const getDriverKey = (record) => {
@@ -904,36 +1135,262 @@ const updateSavingProgress = (percent, stepText) => {
 };
 
 const updateLoginAgentMode = () => {
-  if (!loginInstitution || !loginAgent || !loginAgentCustom || !loginAgentLabel) return;
+  if (!loginInstitution || !loginAgent || !loginAgentLabel) return;
   const selectedInstitution = loginInstitution.value;
-  const isIcmbio = selectedInstitution === 'icmbio';
-
-  if (isIcmbio && loginAgent.options.length <= 1) {
-    populateLoginAgents();
-  }
-
-  loginAgent.classList.toggle('hidden', !isIcmbio);
-  loginAgentCustom.classList.toggle('hidden', isIcmbio);
-  loginAgent.required = isIcmbio;
-  loginAgentCustom.required = Boolean(selectedInstitution) && !isIcmbio;
-  loginAgentLabel.textContent = isIcmbio ? 'Nome do Agente' : 'Agente';
-
-  if (isIcmbio) {
-    loginAgentCustom.value = '';
-  } else {
-    loginAgent.value = '';
-  }
+  loginAgentLabel.textContent = 'Nome do Agente';
+  loginAgent.required = Boolean(selectedInstitution);
+  populateLoginAgents(selectedInstitution);
 };
 
-const populateLoginAgents = () => {
+const populateLoginAgents = (institutionKey = loginInstitution?.value || '') => {
   if (!loginAgent) return;
   loginAgent.innerHTML = '<option value="">Selecione um agente</option>';
-  icmbioAgents.forEach((agentName) => {
-    const loginOption = document.createElement('option');
-    loginOption.value = agentName;
-    loginOption.textContent = agentName;
-    loginAgent.appendChild(loginOption);
+  if (!institutionKey) return;
+
+  managedUsers
+    .filter((user) => user.institutionKey === institutionKey && user.active !== false)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    .forEach((user) => {
+      const loginOption = document.createElement('option');
+      loginOption.value = user.name;
+      loginOption.textContent = user.name;
+      loginAgent.appendChild(loginOption);
+    });
+};
+
+const resetAdminUserForm = () => {
+  if (!adminUserForm) return;
+  adminUserForm.reset();
+  if (adminEditingUserId) adminEditingUserId.value = '';
+  if (adminFormTitle) adminFormTitle.textContent = 'Cadastrar usuário';
+  if (adminSaveUserBtn) adminSaveUserBtn.textContent = 'Salvar usuário';
+  if (adminPasswordHint) adminPasswordHint.textContent = 'Ao editar: deixe em branco para manter a senha atual.';
+  if (adminUserPassword) adminUserPassword.required = true;
+  if (adminCancelEditBtn) adminCancelEditBtn.classList.add('hidden');
+};
+
+const getInstitutionKeysByFilter = () => {
+  const selectedFilter = (adminInstitutionFilter?.value || '').trim();
+  if (selectedFilter) return [selectedFilter];
+  return Object.keys(institutions);
+};
+
+const renderAdminUsers = () => {
+  if (!adminUsersByInstitution) return;
+  adminUsersByInstitution.innerHTML = '';
+
+  const institutionKeys = getInstitutionKeysByFilter();
+  institutionKeys.forEach((institutionKey) => {
+    const section = document.createElement('section');
+    section.className = 'admin-institution-section';
+
+    const title = document.createElement('h4');
+    title.className = 'admin-institution-title';
+    title.textContent = getInstitutionLabel(institutionKey) || institutionKey;
+    section.appendChild(title);
+
+    const users = managedUsers
+      .filter((user) => user.institutionKey === institutionKey && user.active !== false)
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    if (!users.length) {
+      const empty = document.createElement('p');
+      empty.className = 'admin-empty-state';
+      empty.textContent = 'Nenhum usuário cadastrado nesta instituição.';
+      section.appendChild(empty);
+      adminUsersByInstitution.appendChild(section);
+      return;
+    }
+
+    users.forEach((user) => {
+      const item = document.createElement('div');
+      item.className = 'admin-user-item';
+
+      const badges = [];
+      if (user.isAdmin) badges.push('<span class="admin-user-badge">Administrador</span>');
+      if (user.canVerifyExternalReports) badges.push('<span class="admin-user-badge">Verificador</span>');
+
+      item.innerHTML = `
+        <div class="admin-user-main">
+          <span class="admin-user-name">${user.name}</span>
+          <div class="admin-user-badges">${badges.join('')}</div>
+        </div>
+        <div class="admin-user-actions">
+          <button type="button" class="ghost-btn admin-user-edit" data-user-id="${user.id}">Editar</button>
+          <button type="button" class="ghost-btn admin-user-delete" data-user-id="${user.id}">Excluir</button>
+        </div>
+      `;
+      section.appendChild(item);
+    });
+
+    adminUsersByInstitution.appendChild(section);
   });
+
+  adminUsersByInstitution.querySelectorAll('.admin-user-edit').forEach((button) => {
+    button.addEventListener('click', () => {
+      const user = managedUsers.find((entry) => entry.id === button.dataset.userId);
+      if (!user) return;
+      if (adminEditingUserId) adminEditingUserId.value = user.id;
+      if (adminUserInstitution) adminUserInstitution.value = user.institutionKey;
+      if (adminUserName) adminUserName.value = user.name;
+      if (adminUserPassword) {
+        adminUserPassword.value = '';
+        adminUserPassword.required = false;
+      }
+      if (adminUserIsAdmin) adminUserIsAdmin.checked = Boolean(user.isAdmin);
+      if (adminUserCanVerify) adminUserCanVerify.checked = Boolean(user.canVerifyExternalReports);
+      if (adminFormTitle) adminFormTitle.textContent = 'Editar usuário';
+      if (adminSaveUserBtn) adminSaveUserBtn.textContent = 'Atualizar usuário';
+      if (adminPasswordHint) adminPasswordHint.textContent = 'Deixe em branco para manter a senha atual.';
+      if (adminCancelEditBtn) adminCancelEditBtn.classList.remove('hidden');
+      adminUserForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  adminUsersByInstitution.querySelectorAll('.admin-user-delete').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const userId = button.dataset.userId;
+      const target = managedUsers.find((entry) => entry.id === userId);
+      if (!target) return;
+
+      const isLastAdmin = target.isAdmin && managedUsers.filter((entry) => entry.isAdmin && entry.active !== false).length <= 1;
+      if (isLastAdmin) {
+        showAlert(adminUserError, 'Não é possível excluir o último administrador do sistema.');
+        return;
+      }
+
+      const confirmed = window.confirm(`Deseja excluir o usuário ${target.name}?`);
+      if (!confirmed) return;
+
+      try {
+        if (db) {
+          await db.collection(usersCollection).doc(target.id).delete();
+        }
+        managedUsers = managedUsers.filter((entry) => entry.id !== target.id);
+        saveUsersToCache(managedUsers);
+        populateLoginAgents();
+        renderAdminUsers();
+        showAlert(adminUserSuccess, `Usuário ${target.name} excluído com sucesso.`);
+
+        if (target.id === getLoggedUserId()) {
+          clearSession();
+        }
+      } catch {
+        showAlert(adminUserError, 'Não foi possível excluir o usuário selecionado.');
+      }
+    });
+  });
+};
+
+const updateAdminPanelAccess = () => {
+  const canManageUsers = isAdminUser();
+  if (toggleAdminPanelBtn) {
+    toggleAdminPanelBtn.classList.toggle('hidden', !canManageUsers);
+  }
+  if (!canManageUsers && adminPanel) {
+    adminPanel.classList.add('hidden');
+    if (toggleAdminPanelBtn) toggleAdminPanelBtn.textContent = 'Administração';
+    return;
+  }
+  renderAdminUsers();
+};
+
+const saveManagedUser = async (userPayload) => {
+  if (!db) return;
+  await db
+    .collection(usersCollection)
+    .doc(userPayload.id)
+    .set(
+      {
+        ...userPayload,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+};
+
+const handleAdminUserSubmit = async () => {
+  if (!isAdminUser()) {
+    showAlert(adminUserError, 'Apenas administradores podem gerenciar usuários.');
+    return;
+  }
+
+  const editingUserId = (adminEditingUserId?.value || '').trim();
+  const institutionKey = (adminUserInstitution?.value || '').trim();
+  const name = normalizeUpperText(adminUserName?.value || '');
+  const plainPassword = (adminUserPassword?.value || '').trim();
+  const isAdmin = Boolean(adminUserIsAdmin?.checked);
+  const canVerifyExternalReports = Boolean(adminUserCanVerify?.checked);
+
+  if (!institutionKey || !name) {
+    showAlert(adminUserError, 'Informe instituição e nome do perfil.');
+    return;
+  }
+
+  const duplicated = managedUsers.find(
+    (user) =>
+      user.institutionKey === institutionKey &&
+      normalizeUpperText(user.name) === name &&
+      user.id !== editingUserId &&
+      user.active !== false
+  );
+  if (duplicated) {
+    showAlert(adminUserError, 'Já existe um usuário com este nome nessa instituição.');
+    return;
+  }
+
+  if (!editingUserId && !plainPassword) {
+    showAlert(adminUserError, 'Informe uma senha para o novo usuário.');
+    return;
+  }
+
+  const existing = managedUsers.find((user) => user.id === editingUserId);
+  let nextUser;
+
+  if (existing) {
+    const wasAdmin = Boolean(existing.isAdmin);
+    const adminsCount = managedUsers.filter((user) => user.isAdmin && user.active !== false).length;
+    if (wasAdmin && !isAdmin && adminsCount <= 1) {
+      showAlert(adminUserError, 'Não é possível remover o papel do último administrador.');
+      return;
+    }
+
+    nextUser = {
+      ...existing,
+      name,
+      institutionKey,
+      institutionLabel: getInstitutionLabel(institutionKey),
+      isAdmin,
+      canVerifyExternalReports,
+      active: true,
+    };
+
+    if (plainPassword) {
+      const salt = randomSalt();
+      nextUser.passwordSalt = salt;
+      nextUser.passwordHash = await hashPassword(plainPassword, salt);
+    }
+  } else {
+    nextUser = await createManagedUserRecord(name, institutionKey, plainPassword, {
+      isAdmin,
+      canVerifyExternalReports,
+    });
+  }
+
+  try {
+    await saveManagedUser(nextUser);
+    const withoutCurrent = managedUsers.filter((user) => user.id !== nextUser.id);
+    managedUsers = [...withoutCurrent, nextUser];
+    saveUsersToCache(managedUsers);
+    populateLoginAgents();
+    renderAdminUsers();
+    updateExternalReportsAccess();
+    updateAdminPanelAccess();
+    resetAdminUserForm();
+    showAlert(adminUserSuccess, existing ? 'Usuário atualizado com sucesso.' : 'Usuário criado com sucesso.');
+  } catch {
+    showAlert(adminUserError, 'Não foi possível salvar o usuário agora.');
+  }
 };
 
 const populateFilterAgents = () => {
@@ -1018,11 +1475,17 @@ const populateMonthYearFilters = () => {
   if (selectedYear) filterYear.value = selectedYear;
 };
 
-const setLoggedUser = (agentName, institutionKey) => {
+const setLoggedUser = (agentName, institutionKey, userProfile = null) => {
   if (entryScreen) entryScreen.classList.add('hidden');
   if (publicReportScreen) publicReportScreen.classList.add('hidden');
   localStorage.setItem(sessionKey, agentName);
   localStorage.setItem(sessionInstitutionKey, institutionKey);
+  const resolvedUser = userProfile || findManagedUser(institutionKey, agentName);
+  if (resolvedUser?.id) {
+    localStorage.setItem(sessionUserIdKey, resolvedUser.id);
+  } else {
+    localStorage.removeItem(sessionUserIdKey);
+  }
   loginScreen.classList.add('hidden');
   appShell.classList.remove('hidden');
   const institutionLabel = getInstitutionLabel(institutionKey);
@@ -1033,6 +1496,7 @@ const setLoggedUser = (agentName, institutionKey) => {
   agentSelect.readOnly = true;
   updateAgentName();
   updateExternalReportsAccess();
+  updateAdminPanelAccess();
   refreshExternalReports();
 };
 
@@ -1064,11 +1528,11 @@ const showPublicReportScreen = () => {
 const clearSession = () => {
   localStorage.removeItem(sessionKey);
   localStorage.removeItem(sessionInstitutionKey);
+  localStorage.removeItem(sessionUserIdKey);
   showEntryScreen();
   loginPassword.value = '';
   loginInstitution.value = '';
   loginAgent.value = '';
-  if (loginAgentCustom) loginAgentCustom.value = '';
   if (institutionInput) institutionInput.value = '';
   if (institutionDisplay) institutionDisplay.textContent = '[Instituição]';
   currentAgent.textContent = 'Agente: --';
@@ -1077,6 +1541,7 @@ const clearSession = () => {
   updateLoginAgentMode();
   updateAgentName();
   updateExternalReportsAccess();
+  updateAdminPanelAccess();
 };
 
 const showView = (viewId) => {
@@ -1089,7 +1554,7 @@ const showView = (viewId) => {
   }
 };
 
-const handleLogin = () => {
+const handleLogin = async () => {
   const selectedInstitution = loginInstitution.value;
   const selectedAgent = getCurrentLoginAgent();
   const password = loginPassword.value.trim();
@@ -1098,16 +1563,20 @@ const handleLogin = () => {
     showAlert(loginError, 'Selecione a instituição, informe o agente e digite a senha.');
     return false;
   }
-  const expectedPassword = getExpectedPassword(selectedInstitution, selectedAgent);
-  if (password !== expectedPassword) {
-    if (selectedInstitution === 'icmbio') {
-      showAlert(loginError, 'Senha incorreta. Use o padrão primeiro nome + 2026.');
-    } else {
-      showAlert(loginError, 'Senha incorreta para a instituição selecionada.');
-    }
+
+  const user = findManagedUser(selectedInstitution, selectedAgent);
+  if (!user) {
+    showAlert(loginError, 'Usuário não encontrado para a instituição selecionada.');
     return false;
   }
-  setLoggedUser(selectedAgent, selectedInstitution);
+
+  const isValidPassword = await verifyManagedUserPassword(user, password);
+  if (!isValidPassword) {
+    showAlert(loginError, 'Senha incorreta.');
+    return false;
+  }
+
+  setLoggedUser(user.name, selectedInstitution, user);
   return true;
 };
 
@@ -2211,7 +2680,7 @@ const submitPublicReport = async () => {
     try {
       upsertPublicReportCache(payload);
       await savePublicReportToFirestore(payload);
-      if (isIcmbioInstitution()) {
+      if (canManageExternalReports()) {
         refreshExternalReports();
       }
     } catch (error) {
@@ -3219,8 +3688,8 @@ const removeRecord = async (index) => {
 };
 
 const confirmRemoveRecord = async () => {
-  const password = deleteConfirmPassword.value;
-  const loggedAgent = localStorage.getItem(sessionKey);
+  const password = deleteConfirmPassword.value.trim();
+  const loggedUser = getLoggedManagedUser();
   
   if (!password) {
     deletePasswordError.textContent = 'Digite sua senha';
@@ -3228,11 +3697,9 @@ const confirmRemoveRecord = async () => {
     return;
   }
 
-  // Validar senha (primeiro nome + 2026)
-  const institutionKey = getLoggedInstitutionKey() || 'icmbio';
-  const expectedPassword = getExpectedPassword(institutionKey, loggedAgent);
-  
-  if (password !== expectedPassword) {
+  const isValidPassword = await verifyManagedUserPassword(loggedUser, password);
+
+  if (!isValidPassword) {
     deletePasswordError.textContent = 'Senha incorreta';
     deletePasswordError.style.display = 'block';
     return;
@@ -3630,12 +4097,6 @@ const getFilteredRecords = () => applyFilters(allRecords);
 let activityAgents = [];
 let activityPhotos = [];
 
-const normalizeUpperText = (value) =>
-  (value || '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
 const getInstitutionShortName = (institutionLabel) => {
   const normalizedInstitution = normalizeText(institutionLabel);
   if (normalizedInstitution.includes('chico mendes')) return 'ICMBIO';
@@ -3671,10 +4132,18 @@ const populateActivityInstitutionOptions = () => {
 const populateActivityAgentDatalist = () => {
   if (!activityAgentDatalist) return;
   const selectedInstitution = activityAgentInstitutionSelect?.value || '';
+  const selectedInstitutionKey =
+    Object.keys(institutions).find((key) => institutions[key] === selectedInstitution) || '';
   activityAgentDatalist.innerHTML = '';
   const allAgents = Array.from(
     new Set([
-      ...(selectedInstitution === institutions.icmbio ? icmbioAgents : []),
+      ...managedUsers
+        .filter(
+          (user) =>
+            user.active !== false &&
+            (!selectedInstitutionKey || user.institutionKey === selectedInstitutionKey)
+        )
+        .map((user) => user.name),
       ...allRecords
         .filter((record) => !selectedInstitution || (record.institution || '').trim() === selectedInstitution)
         .map((record) => (record.agent || '').trim())
@@ -4252,11 +4721,12 @@ const generatePDF = async () => {
 window.addEventListener('load', () => {
   (async () => {
     try {
-      populateLoginAgents();
-      updateLoginAgentMode();
-
       initFirebase();
       await ensureFirebaseAuth();
+      await initManagedUsers();
+
+      populateLoginAgents();
+      updateLoginAgentMode();
       allRecords = await loadRecords();
       if (db && allRecords.length === 0) {
         const migrated = await migrateLocalToFirestore();
@@ -4281,12 +4751,15 @@ window.addEventListener('load', () => {
 
       const loggedAgent = localStorage.getItem(sessionKey);
       const loggedInstitution = localStorage.getItem(sessionInstitutionKey) || 'icmbio';
-      if (loggedAgent) {
-        setLoggedUser(loggedAgent, loggedInstitution);
+      const loggedUser = getLoggedManagedUser();
+      if (loggedAgent && loggedUser) {
+        setLoggedUser(loggedUser.name, loggedUser.institutionKey || loggedInstitution, loggedUser);
         showView('dashboardView');
       } else {
+        clearSession();
         showEntryScreen();
         updateExternalReportsAccess();
+        updateAdminPanelAccess();
       }
 
       const params = new URLSearchParams(window.location.search);
@@ -4295,6 +4768,7 @@ window.addEventListener('load', () => {
         await showRecordDetail(recordId);
       }
     } catch (error) {
+      managedUsers = loadUsersFromCache();
       allRecords = loadRecordsFromStorage(storageKey);
       if (!allRecords.length) {
         allRecords = loadRecordsFromStorage(backupStorageKey);
@@ -4307,6 +4781,7 @@ window.addEventListener('load', () => {
       updateLoginAgentMode();
       showEntryScreen();
       updateExternalReportsAccess();
+      updateAdminPanelAccess();
     }
   })();
 });
@@ -4385,30 +4860,25 @@ if (deleteConfirmPassword) {
   });
 });
 
-loginForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  if (handleLogin()) {
+const executeLogin = async (event) => {
+  if (event) event.preventDefault();
+  const logged = await handleLogin();
+  if (logged) {
     showView('dashboardView');
   }
-});
+};
+
+loginForm.addEventListener('submit', executeLogin);
 
 // Adicionar também um listener direto no botão para mobile
 if (loginBtn) {
-  loginBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    if (handleLogin()) {
-      showView('dashboardView');
-    }
-  });
+  loginBtn.addEventListener('click', executeLogin);
 }
 
 // Permitir login ao pressionar Enter no campo de senha
 loginPassword.addEventListener('keypress', (event) => {
   if (event.key === 'Enter') {
-    event.preventDefault();
-    if (handleLogin()) {
-      showView('dashboardView');
-    }
+    executeLogin(event);
   }
 });
 
@@ -4574,9 +5044,35 @@ if (loginInstitution) {
   loginInstitution.addEventListener('change', updateLoginAgentMode);
 }
 
-if (loginAgentCustom) {
-  loginAgentCustom.addEventListener('input', (event) => {
+if (toggleAdminPanelBtn && adminPanel) {
+  toggleAdminPanelBtn.addEventListener('click', () => {
+    const isHidden = adminPanel.classList.toggle('hidden');
+    toggleAdminPanelBtn.textContent = isHidden ? 'Administração' : 'Ocultar administração';
+    if (!isHidden) {
+      renderAdminUsers();
+      adminPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+}
+
+if (adminInstitutionFilter) {
+  adminInstitutionFilter.addEventListener('change', renderAdminUsers);
+}
+
+if (adminCancelEditBtn) {
+  adminCancelEditBtn.addEventListener('click', resetAdminUserForm);
+}
+
+if (adminUserName) {
+  adminUserName.addEventListener('input', (event) => {
     event.target.value = event.target.value.toUpperCase();
+  });
+}
+
+if (adminUserForm) {
+  adminUserForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await handleAdminUserSubmit();
   });
 }
 
