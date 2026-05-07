@@ -194,7 +194,8 @@ const maxRecordPdfPhotos = 8;
 const publicReportsCollection = 'records';
 const publicReportsCacheKey = 'publicReportsCache';
 const publicReportsSeenKey = 'publicReportsSeenProtocols';
-const usersCollection = 'system_users';
+const usersCollection = 'records';
+const userRecordType = 'system_user';
 const usersCacheKey = 'systemUsersCache';
 const sessionUserIdKey = 'loggedUserId';
 const adminNames = new Set(['RENAN ARAUJO E SILVA', 'ADRIANO RICARDO DAMATO ROCHA DE SOUZA']);
@@ -361,6 +362,7 @@ const createManagedUserRecord = async (
   const userId = id || makeUserDocId(institutionKey, normalizedName);
   return {
     id: userId,
+    reportType: userRecordType,
     name: normalizedName,
     institutionKey,
     institutionLabel: getInstitutionLabel(institutionKey),
@@ -434,6 +436,7 @@ const ensureManagedUsersSeed = async (existingUsers = []) => {
           .set(
             {
               ...user,
+              reportType: userRecordType,
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             },
@@ -451,7 +454,11 @@ const ensureManagedUsersSeed = async (existingUsers = []) => {
 const loadManagedUsersFromFirestore = async () => {
   if (!db) return [];
   try {
-    const snapshot = await db.collection(usersCollection).get();
+    const snapshot = await db
+      .collection(usersCollection)
+      .where('reportType', '==', userRecordType)
+      .limit(500)
+      .get();
     return snapshot.docs
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((user) => user && user.name && user.institutionKey);
@@ -1303,6 +1310,7 @@ const saveManagedUser = async (userPayload) => {
     .set(
       {
         ...userPayload,
+        reportType: userRecordType,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -1388,8 +1396,12 @@ const handleAdminUserSubmit = async () => {
     updateAdminPanelAccess();
     resetAdminUserForm();
     showAlert(adminUserSuccess, existing ? 'Usuário atualizado com sucesso.' : 'Usuário criado com sucesso.');
-  } catch {
-    showAlert(adminUserError, 'Não foi possível salvar o usuário agora.');
+  } catch (error) {
+    const message = (error && error.message ? String(error.message) : '').trim();
+    showAlert(
+      adminUserError,
+      message ? `Não foi possível salvar o usuário agora: ${message}` : 'Não foi possível salvar o usuário agora.'
+    );
   }
 };
 
@@ -1602,14 +1614,14 @@ const loadRecordsFromFirestore = async () => {
     firestoreReadBlocked = false;
     return snapshot.docs
       .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
-      .filter((record) => record.reportType !== 'public_denuncia');
+      .filter((record) => record.reportType !== 'public_denuncia' && record.reportType !== userRecordType);
   } catch (error) {
     try {
       const snapshot = await db.collection('records').get();
       firestoreReadBlocked = false;
       return snapshot.docs
         .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
-        .filter((record) => record.reportType !== 'public_denuncia');
+        .filter((record) => record.reportType !== 'public_denuncia' && record.reportType !== userRecordType);
     } catch (fallbackError) {
       firestoreReadBlocked = true;
       return [];
