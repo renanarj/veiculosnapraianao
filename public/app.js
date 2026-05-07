@@ -2598,7 +2598,7 @@ const generatePublicReportPdfPayload = (payload) => {
 
   return {
     emailPdfBase64: pdfBase64,
-    emailPdfFileName: `Denuncia_Publica_${publicRecord.occurrenceNumber}.pdf`,
+    emailPdfFileName: `Denuncia_Publica_${normalizeProtocol(payload.protocol || 'SEM_PROTOCOLO')}.pdf`,
   };
 };
 
@@ -2636,10 +2636,14 @@ const submitPublicReport = async () => {
     timestamp: new Date().toISOString(),
   };
 
-  const emailPdfPayload = generatePublicReportPdfPayload(payload);
-  if (emailPdfPayload?.emailPdfBase64) {
-    payload.emailPdfBase64 = emailPdfPayload.emailPdfBase64;
-    payload.emailPdfFileName = emailPdfPayload.emailPdfFileName;
+  try {
+    const emailPdfPayload = generatePublicReportPdfPayload(payload);
+    if (emailPdfPayload?.emailPdfBase64) {
+      payload.emailPdfBase64 = emailPdfPayload.emailPdfBase64;
+      payload.emailPdfFileName = emailPdfPayload.emailPdfFileName;
+    }
+  } catch (_) {
+    // Se a geração do PDF falhar, o envio da denúncia continua sem anexo em PDF.
   }
 
   const hasUsefulInfo = Object.entries(payload).some(([key, value]) => {
