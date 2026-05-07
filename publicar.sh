@@ -9,10 +9,29 @@ echo ""
 cd /workspaces/codespaces-blank
 
 echo "🔎 Verificando se a base local esta atualizada com o GitHub..."
-git fetch origin --prune >/dev/null 2>&1
+env -u GITHUB_TOKEN git fetch origin --prune >/dev/null 2>&1
 BEHIND_COUNT=$(git rev-list --count HEAD..origin/main)
 if [ "$BEHIND_COUNT" -gt 0 ]; then
     echo "⚠️  Sua base local esta atras de origin/main ($BEHIND_COUNT commit(s))."
+    echo "Execute ./atualizar.sh antes de publicar."
+    exit 1
+fi
+
+echo "🔎 Verificando se GitHub e producao online estao alinhados..."
+REMOTE_MISMATCH=0
+for f in index.html app.js styles.css; do
+    HASH_GITHUB=$(git show "origin/main:public/$f" | sha256sum | awk '{print $1}')
+    HASH_ONLINE=$(curl -fsS "https://veiculosnapraianao.web.app/$f" | sha256sum | awk '{print $1}')
+    if [ "$HASH_GITHUB" != "$HASH_ONLINE" ]; then
+        REMOTE_MISMATCH=1
+        echo "⚠️  Divergencia remota em public/$f"
+        echo "   github: $HASH_GITHUB"
+        echo "   online: $HASH_ONLINE"
+    fi
+done
+
+if [ "$REMOTE_MISMATCH" -ne 0 ]; then
+    echo "⚠️  GitHub e producao nao estao na mesma base."
     echo "Execute ./atualizar.sh antes de publicar."
     exit 1
 fi
@@ -81,7 +100,7 @@ else
 fi
 
 # Fazer push no GitHub
-if git push origin main 2>/dev/null && git push origin --tags 2>/dev/null; then
+if env -u GITHUB_TOKEN git push origin main 2>/dev/null && env -u GITHUB_TOKEN git push origin --tags 2>/dev/null; then
     echo "✅ GitHub atualizado!"
     echo "🏷️  Tag enviada: $TAG"
     echo "📦 Repositório: https://github.com/renanarj/veiculosnapraianao"

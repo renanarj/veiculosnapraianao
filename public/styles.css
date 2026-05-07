@@ -1329,6 +1329,14 @@ body {
   .external-report-manage {
     grid-template-columns: 1fr;
   }
+
+  .external-report-actions {
+    justify-content: stretch;
+  }
+
+  .external-report-pdf {
+    width: 100%;
+  }
 }
 
 .app-shell {
@@ -1513,6 +1521,31 @@ body {
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+}
+.external-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.external-report-pdf {
+  min-height: 40px;
+  width: auto;
+}
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #c62828;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .external-report-meta {
