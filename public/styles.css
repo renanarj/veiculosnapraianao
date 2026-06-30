@@ -1511,20 +1511,19 @@ body {
 .external-reports-status-columns {
   display: grid;
   grid-template-columns: repeat(3, minmax(260px, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .external-status-column {
   border: 1px solid #dce8cf;
   border-radius: 12px;
   background: #fdfefb;
-  padding: 10px;
-  min-height: 120px;
+  padding: 8px;
 }
 
 .external-status-toggle {
   width: 100%;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   background: #edf5e3;
   color: var(--green-dark);
   border: 1px solid #d6e3ca;
@@ -1560,7 +1559,7 @@ body {
 
 .external-status-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .external-status-empty {
