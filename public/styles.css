@@ -1508,6 +1508,43 @@ body {
   gap: 12px;
 }
 
+.external-reports-status-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.external-status-column {
+  border: 1px solid #dce8cf;
+  border-radius: 12px;
+  background: #fdfefb;
+  padding: 10px;
+  min-height: 120px;
+}
+
+.external-status-column h4 {
+  color: var(--green-dark);
+  font-size: 0.98rem;
+  margin-bottom: 10px;
+}
+
+.external-status-count {
+  color: #4b5563;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.external-status-list {
+  display: grid;
+  gap: 10px;
+}
+
+.external-status-empty {
+  color: #6b7280;
+  font-size: 0.9rem;
+  padding: 6px 2px;
+}
+
 .external-report-item {
   border: 1px solid #d6e3ca;
   border-radius: 12px;
@@ -1525,11 +1562,22 @@ body {
 .external-report-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 8px;
 }
 .external-report-pdf {
   min-height: 40px;
   width: auto;
+}
+
+.external-report-delete {
+  min-height: 40px;
+  width: auto;
+  background: #b42318;
+}
+
+.external-report-delete:hover {
+  background: #8f1d13;
 }
 .notification-badge {
   display: inline-flex;
@@ -1571,6 +1619,27 @@ body {
 
 .external-report-save {
   min-height: 40px;
+}
+
+.badge-recebida {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.badge-analise {
+  background: #fff7d6;
+  color: #9a6700;
+}
+
+.badge-analisada {
+  background: #dcfce7;
+  color: #166534;
+}
+
+@media (max-width: 1080px) {
+  .external-reports-status-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 .record-detail-header {

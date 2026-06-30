@@ -368,7 +368,7 @@
                 <h3>Denúncias Externas</h3>
                 <span id="externalReportsCount" class="card-label">0 denúncias</span>
               </div>
-              <div id="externalReportsList" class="external-reports-list"></div>
+              <div id="externalReportsList" class="external-reports-status-columns"></div>
             </div>
           </div>
 
@@ -778,6 +778,31 @@
         <div class="modal-actions">
           <button type="button" id="cancelDeleteBtn" class="ghost-btn">Cancelar</button>
           <button type="button" id="confirmDeleteBtn" class="delete-btn">Remover Registro</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="externalDeleteConfirmModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="externalDeleteConfirmTitle"
+    >
+      <div class="modal-card">
+        <h3 id="externalDeleteConfirmTitle">Excluir Denúncia Externa</h3>
+        <p id="externalDeleteConfirmMessage">Para excluir esta denúncia, digite sua senha:</p>
+        <input
+          type="password"
+          id="externalDeleteConfirmPassword"
+          class="modal-password-input"
+          placeholder="Digite sua senha"
+          autocomplete="off"
+        />
+        <div id="externalDeletePasswordError" class="alert-error" style="margin-top: 10px;"></div>
+        <div class="modal-actions">
+          <button type="button" id="cancelExternalDeleteBtn" class="ghost-btn">Cancelar</button>
+          <button type="button" id="confirmExternalDeleteBtn" class="delete-btn">Excluir Denúncia</button>
         </div>
       </div>
     </div>

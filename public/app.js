@@ -152,6 +152,12 @@ const deleteConfirmPassword = document.getElementById('deleteConfirmPassword');
 const deletePasswordError = document.getElementById('deletePasswordError');
 const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
 const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+const externalDeleteConfirmModal = document.getElementById('externalDeleteConfirmModal');
+const externalDeleteConfirmMessage = document.getElementById('externalDeleteConfirmMessage');
+const externalDeleteConfirmPassword = document.getElementById('externalDeleteConfirmPassword');
+const externalDeletePasswordError = document.getElementById('externalDeletePasswordError');
+const cancelExternalDeleteBtn = document.getElementById('cancelExternalDeleteBtn');
+const confirmExternalDeleteBtn = document.getElementById('confirmExternalDeleteBtn');
 const photoModal = document.getElementById('photoModal');
 const photoModalImage = document.getElementById('photoModalImage');
 const photoModalClose = document.getElementById('photoModalClose');
@@ -183,6 +189,7 @@ let isRecordSaveInProgress = false;
 let publicReports = [];
 let managedUsers = [];
 let pendingDeleteIndex = -1;
+let pendingExternalDeleteDocId = '';
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
 let latestPublicProtocol = '';
@@ -569,6 +576,17 @@ const getPublicReportStatusValue = (status) => {
   return 'Recebida';
 };
 
+const getExternalStatusMeta = (status) => {
+  const normalized = getPublicReportStatusValue(status);
+  if (normalized === 'Recebida') {
+    return { key: 'recebida', label: 'Recebidas', badgeClass: 'badge-recebida' };
+  }
+  if (normalized === 'Em análise') {
+    return { key: 'analise', label: 'Em análise', badgeClass: 'badge-analise' };
+  }
+  return { key: 'analisada', label: 'Analisadas', badgeClass: 'badge-analisada' };
+};
+
 const buildPublicReportFirestorePayload = (payload) => ({
   reportType: 'public_denuncia',
   protocol: normalizeProtocol(payload.protocol),
@@ -725,8 +743,19 @@ const renderExternalReportsPanel = () => {
   if (!externalReportsList) return;
 
   externalReportsList.innerHTML = '';
+
+  const statusCounters = {
+    recebida: 0,
+    analise: 0,
+    analisada: 0,
+  };
+  publicReports.forEach((report) => {
+    const meta = getExternalStatusMeta(report.status || 'Recebida');
+    statusCounters[meta.key] += 1;
+  });
+
   if (externalReportsCount) {
-    externalReportsCount.textContent = `${publicReports.length} denúncias`;
+    externalReportsCount.textContent = `${publicReports.length} denúncias (R: ${statusCounters.recebida} | EA: ${statusCounters.analise} | A: ${statusCounters.analisada})`;
   }
 
   if (!publicReports.length) {
@@ -734,101 +763,251 @@ const renderExternalReportsPanel = () => {
     return;
   }
 
+  const columns = [
+    { key: 'recebida', label: 'Recebidas' },
+    { key: 'analise', label: 'Em análise' },
+    { key: 'analisada', label: 'Analisadas' },
+  ];
+  const grouped = {
+    recebida: [],
+    analise: [],
+    analisada: [],
+  };
+
   publicReports.forEach((report) => {
-    const card = document.createElement('div');
-    card.className = 'external-report-item';
+    const meta = getExternalStatusMeta(report.status || 'Recebida');
+    grouped[meta.key].push(report);
+  });
 
-    const statusValue = getPublicReportStatusValue(report.status || 'Recebida');
-    const noteValue = (report.managerNote || '').trim();
-    const managedBy = (report.managedByAgent || '').trim();
-    const canManage = canManageExternalReports();
+  columns.forEach((column) => {
+    const columnWrap = document.createElement('section');
+    columnWrap.className = 'external-status-column';
 
-    card.innerHTML = `
-      <div class="external-report-header">
-        <strong>Protocolo ${report.protocol || '--'}</strong>
-        <span class="badge">${statusValue}</span>
-      </div>
-      <div class="external-report-meta">
-        <span><strong>Data:</strong> ${report.date || '--'} ${report.time ? `• ${report.time}` : ''}</span>
-        <span><strong>Local:</strong> ${report.location || '--'}</span>
-        <span><strong>Placa:</strong> ${report.vehiclePlate || '--'}</span>
-        <span><strong>Relato:</strong> ${report.observations || '--'}</span>
-      </div>
-      <div class="external-report-manage">
-        <select class="external-report-status" ${canManage ? '' : 'disabled'}>
-          <option value="Recebida" ${statusValue === 'Recebida' ? 'selected' : ''}>Recebida</option>
-          <option value="Em análise" ${statusValue === 'Em análise' ? 'selected' : ''}>Em análise</option>
-          <option value="Analisada" ${statusValue === 'Analisada' ? 'selected' : ''}>Analisada</option>
-        </select>
-        <input type="text" class="external-report-note" value="${noteValue.replace(/"/g, '&quot;')}" placeholder="Anotação da equipe" ${canManage ? '' : 'disabled'} />
-        <button type="button" class="ghost-btn external-report-save" ${canManage ? '' : 'disabled'}>Salvar</button>
-      </div>
-      <div class="external-report-actions">
-        <button type="button" class="ghost-btn external-report-pdf">Gerar PDF</button>
-      </div>
-      <div class="external-report-meta">
-        <span><strong>Último agente:</strong> ${managedBy || '--'}</span>
-      </div>
-    `;
+    const title = document.createElement('h4');
+    title.innerHTML = `${column.label} <span class="external-status-count">(${grouped[column.key].length})</span>`;
+    columnWrap.appendChild(title);
 
-    const pdfBtn = card.querySelector('.external-report-pdf');
-    if (pdfBtn) {
-      pdfBtn.addEventListener('click', async () => {
-        pdfBtn.disabled = true;
-        const originalLabel = pdfBtn.textContent;
-        pdfBtn.textContent = 'Gerando PDF...';
-        try {
-          await generateExternalReportPdf(report);
-        } catch (error) {
-          showAlert(alertError, 'Não foi possível gerar o PDF desta denúncia.');
-        } finally {
-          pdfBtn.disabled = false;
-          pdfBtn.textContent = originalLabel;
-        }
-      });
+    const list = document.createElement('div');
+    list.className = 'external-status-list';
+
+    if (!grouped[column.key].length) {
+      const empty = document.createElement('p');
+      empty.className = 'external-status-empty';
+      empty.textContent = 'Nenhuma denúncia nesta janela.';
+      list.appendChild(empty);
+      columnWrap.appendChild(list);
+      externalReportsList.appendChild(columnWrap);
+      return;
     }
 
-    if (canManage) {
-      const statusSelect = card.querySelector('.external-report-status');
-      const noteInput = card.querySelector('.external-report-note');
-      const saveBtn = card.querySelector('.external-report-save');
-      if (saveBtn && statusSelect && noteInput) {
-        saveBtn.addEventListener('click', async () => {
-          saveBtn.disabled = true;
+    grouped[column.key].forEach((report) => {
+      const card = document.createElement('div');
+      card.className = 'external-report-item';
+
+      const statusValue = getPublicReportStatusValue(report.status || 'Recebida');
+      const statusMeta = getExternalStatusMeta(statusValue);
+      const noteValue = (report.managerNote || '').trim();
+      const safeNoteValue = noteValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      const managedBy = (report.managedByAgent || '').trim();
+      const canManage = canManageExternalReports();
+
+      card.innerHTML = `
+        <div class="external-report-header">
+          <strong>Protocolo ${report.protocol || '--'}</strong>
+          <span class="badge ${statusMeta.badgeClass}">${statusValue}</span>
+        </div>
+        <div class="external-report-meta">
+          <span><strong>Data:</strong> ${report.date || '--'} ${report.time ? `• ${report.time}` : ''}</span>
+          <span><strong>Local:</strong> ${report.location || '--'}</span>
+          <span><strong>Placa:</strong> ${report.vehiclePlate || '--'}</span>
+          <span><strong>Relato:</strong> ${report.observations || '--'}</span>
+        </div>
+        <div class="external-report-manage">
+          <select class="external-report-status" ${canManage ? '' : 'disabled'}>
+            <option value="Recebida" ${statusValue === 'Recebida' ? 'selected' : ''}>Recebida</option>
+            <option value="Em análise" ${statusValue === 'Em análise' ? 'selected' : ''}>Em análise</option>
+            <option value="Analisada" ${statusValue === 'Analisada' ? 'selected' : ''}>Analisada</option>
+          </select>
+          <input type="text" class="external-report-note" value="${safeNoteValue}" placeholder="Anotação da equipe" ${canManage ? '' : 'disabled'} />
+          <button type="button" class="ghost-btn external-report-save" ${canManage ? '' : 'disabled'}>Salvar</button>
+        </div>
+        <div class="external-report-actions">
+          <button type="button" class="ghost-btn external-report-pdf">Gerar PDF</button>
+          ${canManage ? '<button type="button" class="external-report-delete">Excluir</button>' : ''}
+        </div>
+        <div class="external-report-meta">
+          <span><strong>Último agente:</strong> ${managedBy || '--'}</span>
+        </div>
+      `;
+
+      const pdfBtn = card.querySelector('.external-report-pdf');
+      if (pdfBtn) {
+        pdfBtn.addEventListener('click', async () => {
+          pdfBtn.disabled = true;
+          const originalLabel = pdfBtn.textContent;
+          pdfBtn.textContent = 'Gerando PDF...';
           try {
-            const status = getPublicReportStatusValue(statusSelect.value);
-            const note = (noteInput.value || '').trim();
-            const docId = report.id || getPublicReportDocId(report.protocol || '');
-            if (!docId) throw new Error('Protocolo inválido.');
-
-            await db.collection(publicReportsCollection).doc(docId).set(
-              {
-                status,
-                managerNote: note,
-                managedByAgent: getLoggedAgentName() || '',
-                managedByInstitution: getInstitutionLabel(getLoggedInstitutionKey()) || '',
-                managedAt: new Date().toISOString(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-
-            report.status = status;
-            report.managerNote = note;
-            report.managedByAgent = getLoggedAgentName() || '';
-            showAlert(alertSuccess, `Denúncia ${report.protocol || ''} atualizada.`);
-            renderExternalReportsPanel();
+            await generateExternalReportPdf(report);
           } catch (error) {
-            showAlert(alertError, 'Não foi possível salvar a atualização da denúncia.');
+            showAlert(alertError, 'Não foi possível gerar o PDF desta denúncia.');
           } finally {
-            saveBtn.disabled = false;
+            pdfBtn.disabled = false;
+            pdfBtn.textContent = originalLabel;
           }
         });
       }
+
+      if (canManage) {
+        const statusSelect = card.querySelector('.external-report-status');
+        const noteInput = card.querySelector('.external-report-note');
+        const saveBtn = card.querySelector('.external-report-save');
+        const deleteBtn = card.querySelector('.external-report-delete');
+
+        if (saveBtn && statusSelect && noteInput) {
+          saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            try {
+              const status = getPublicReportStatusValue(statusSelect.value);
+              const note = (noteInput.value || '').trim();
+              const docId = report.id || getPublicReportDocId(report.protocol || '');
+              if (!docId) throw new Error('Protocolo inválido.');
+
+              await db.collection(publicReportsCollection).doc(docId).set(
+                {
+                  status,
+                  managerNote: note,
+                  managedByAgent: getLoggedAgentName() || '',
+                  managedByInstitution: getInstitutionLabel(getLoggedInstitutionKey()) || '',
+                  managedAt: new Date().toISOString(),
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true }
+              );
+
+              report.status = status;
+              report.managerNote = note;
+              report.managedByAgent = getLoggedAgentName() || '';
+              showAlert(alertSuccess, `Denúncia ${report.protocol || ''} atualizada.`);
+              renderExternalReportsPanel();
+            } catch (error) {
+              showAlert(alertError, 'Não foi possível salvar a atualização da denúncia.');
+            } finally {
+              saveBtn.disabled = false;
+            }
+          });
+        }
+
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', () => {
+            openExternalDeleteModal(report);
+          });
+        }
+      }
+
+      list.appendChild(card);
+    });
+
+    columnWrap.appendChild(list);
+    externalReportsList.appendChild(columnWrap);
+  });
+};
+
+const openExternalDeleteModal = (report) => {
+  if (!canManageExternalReports()) {
+    showAlert(alertError, 'Você não tem permissão para excluir denúncias externas.');
+    return;
+  }
+
+  const docId = report?.id || getPublicReportDocId(report?.protocol || '');
+  if (!docId) {
+    showAlert(alertError, 'Não foi possível identificar esta denúncia para exclusão.');
+    return;
+  }
+
+  pendingExternalDeleteDocId = docId;
+  if (externalDeleteConfirmMessage) {
+    externalDeleteConfirmMessage.textContent = `Para excluir a denúncia ${report?.protocol || '--'}, digite sua senha:`;
+  }
+  if (externalDeleteConfirmPassword) {
+    externalDeleteConfirmPassword.value = '';
+  }
+  if (externalDeletePasswordError) {
+    externalDeletePasswordError.style.display = 'none';
+    externalDeletePasswordError.textContent = '';
+  }
+  if (externalDeleteConfirmModal) {
+    externalDeleteConfirmModal.classList.remove('hidden');
+  }
+  document.body.classList.add('modal-open');
+  externalDeleteConfirmPassword?.focus();
+};
+
+const closeExternalDeleteModal = () => {
+  if (externalDeleteConfirmModal) {
+    externalDeleteConfirmModal.classList.add('hidden');
+  }
+  document.body.classList.remove('modal-open');
+  pendingExternalDeleteDocId = '';
+  if (externalDeleteConfirmPassword) {
+    externalDeleteConfirmPassword.value = '';
+  }
+  if (externalDeletePasswordError) {
+    externalDeletePasswordError.style.display = 'none';
+    externalDeletePasswordError.textContent = '';
+  }
+};
+
+const confirmExternalDeleteReport = async () => {
+  const loggedUser = getLoggedManagedUser();
+  const password = (externalDeleteConfirmPassword?.value || '').trim();
+
+  if (!pendingExternalDeleteDocId) {
+    showAlert(alertError, 'Nenhuma denúncia selecionada para exclusão.');
+    closeExternalDeleteModal();
+    return;
+  }
+
+  if (!password) {
+    if (externalDeletePasswordError) {
+      externalDeletePasswordError.textContent = 'Digite sua senha';
+      externalDeletePasswordError.style.display = 'block';
+    }
+    return;
+  }
+
+  const validPassword = await verifyManagedUserPassword(loggedUser, password);
+  if (!validPassword) {
+    if (externalDeletePasswordError) {
+      externalDeletePasswordError.textContent = 'Senha incorreta';
+      externalDeletePasswordError.style.display = 'block';
+    }
+    return;
+  }
+
+  const target = publicReports.find((item) => (item.id || getPublicReportDocId(item.protocol || '')) === pendingExternalDeleteDocId);
+  const targetProtocol = target?.protocol || '--';
+
+  try {
+    if (db) {
+      await db.collection(publicReportsCollection).doc(pendingExternalDeleteDocId).delete();
     }
 
-    externalReportsList.appendChild(card);
-  });
+    publicReports = publicReports.filter(
+      (item) => (item.id || getPublicReportDocId(item.protocol || '')) !== pendingExternalDeleteDocId
+    );
+
+    const cached = loadPublicReportsFromCache().filter(
+      (item) => (item.id || getPublicReportDocId(item.protocol || '')) !== pendingExternalDeleteDocId
+    );
+    savePublicReportsToCache(cached);
+
+    renderExternalReportsPanel();
+    updateExternalReportsToggleLabel();
+    closeExternalDeleteModal();
+    showAlert(alertSuccess, `Denúncia ${targetProtocol} excluída com sucesso.`);
+  } catch (error) {
+    showAlert(alertError, 'Não foi possível excluir a denúncia externa agora.');
+  }
 };
 
 const refreshExternalReports = async () => {
@@ -4895,6 +5074,30 @@ if (deleteConfirmPassword) {
   deleteConfirmPassword.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       confirmRemoveRecord();
+    }
+  });
+}
+
+if (cancelExternalDeleteBtn) {
+  cancelExternalDeleteBtn.addEventListener('click', closeExternalDeleteModal);
+}
+
+if (confirmExternalDeleteBtn) {
+  confirmExternalDeleteBtn.addEventListener('click', confirmExternalDeleteReport);
+}
+
+if (externalDeleteConfirmModal) {
+  externalDeleteConfirmModal.addEventListener('click', (event) => {
+    if (event.target === externalDeleteConfirmModal) {
+      closeExternalDeleteModal();
+    }
+  });
+}
+
+if (externalDeleteConfirmPassword) {
+  externalDeleteConfirmPassword.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') {
+      confirmExternalDeleteReport();
     }
   });
 }
