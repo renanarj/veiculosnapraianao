@@ -179,6 +179,7 @@ let currentlyEditingIndex = -1;
 let stream = null;
 let photosData = [];
 let publicReportPhotos = [];
+let isRecordSaveInProgress = false;
 let publicReports = [];
 let managedUsers = [];
 let pendingDeleteIndex = -1;
@@ -1126,6 +1127,12 @@ const updateAgentName = () => {
 const setSavingState = (isSaving) => {
   if (!savingOverlay) return;
   savingOverlay.classList.toggle('hidden', !isSaving);
+  if (addRecordBtn) {
+    addRecordBtn.disabled = Boolean(isSaving);
+  }
+  if (uploadPhotoBtn) {
+    uploadPhotoBtn.disabled = Boolean(isSaving);
+  }
 };
 
 const updateSavingProgress = (percent, stepText) => {
@@ -2747,6 +2754,8 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
   const isPublicReport = options.mode === 'public';
   const successElement = options.successElement || alertSuccess;
   const successMessage = options.successMessage || 'Registro salvo na planilha online com sucesso!';
+  const hasRemotePhotoUrls = Array.isArray(recordData.photoUrls)
+    && recordData.photoUrls.some((url) => typeof url === 'string' && url.startsWith('http'));
 
   const payload = isPublicReport
     ? {
@@ -2796,7 +2805,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
         location: recordData.location,
         observations: recordData.observations || '',
         timestamp: new Date().toISOString(),
-        photos: recordData.photos || [],
+        photos: hasRemotePhotoUrls ? [] : (recordData.photos || []),
         photoUrls: recordData.photoUrls || [],
       };
 
@@ -3292,8 +3301,9 @@ const renderRecordDetail = (record) => {
   }
 
   recordPhotos.innerHTML = '';
-  if (record.photoUrls && record.photoUrls.length) {
-    record.photoUrls.forEach((url) => {
+  const uniquePhotoLinks = collectRecordPhotoLinks(record);
+  if (uniquePhotoLinks.length) {
+    uniquePhotoLinks.forEach((url) => {
       const img = document.createElement('img');
       img.src = url;
       img.alt = 'Foto do veículo';
@@ -3477,35 +3487,51 @@ const validateRequiredFields = () => {
 };
 
 const addRecord = async () => {
+  if (isRecordSaveInProgress) return;
   if (!validateRequiredFields()) return;
 
-  setSavingState(true);
-  updateSavingProgress(5, 'Preparando salvamento das informacoes...');
-
-  const formData = new FormData(document.getElementById('fiscalizationForm'));
-  const recordData = {};
-  formData.forEach((value, key) => {
-    recordData[key] = value;
-  });
-
-  if (vehicleNoPlateInput?.checked || isNoPlateValue(recordData.vehiclePlate)) {
-    recordData.vehiclePlate = noPlateLabel;
-  }
-  
-  // COPIA AS FOTOS
-  recordData.photos = [...photosData];
-  
-  if (!recordData.agent) {
-    const loggedAgent = localStorage.getItem(sessionKey);
-    recordData.agent = agentSelect.value || loggedAgent || '';
-  }
-  if (!recordData.institution) {
-    const loggedInstitution = getLoggedInstitutionKey();
-    recordData.institution = getInstitutionLabel(loggedInstitution);
-  }
+  isRecordSaveInProgress = true;
 
   try {
-    updateSavingProgress(18, 'Salvando informacoes na plataforma...');
+    setSavingState(true);
+    updateSavingProgress(5, 'Preparando salvamento das informacoes...');
+
+    const formData = new FormData(document.getElementById('fiscalizationForm'));
+    const recordData = {};
+    formData.forEach((value, key) => {
+      recordData[key] = value;
+    });
+
+    if (vehicleNoPlateInput?.checked || isNoPlateValue(recordData.vehiclePlate)) {
+      recordData.vehiclePlate = noPlateLabel;
+    }
+
+    // COPIA AS FOTOS
+    recordData.photos = [...photosData];
+
+    if (!recordData.agent) {
+      const loggedAgent = localStorage.getItem(sessionKey);
+      recordData.agent = agentSelect.value || loggedAgent || '';
+    }
+    if (!recordData.institution) {
+      const loggedInstitution = getLoggedInstitutionKey();
+      recordData.institution = getInstitutionLabel(loggedInstitution);
+    }
+
+    if (currentlyEditingIndex < 0) {
+      const occurrence = (recordData.occurrenceNumber || '').trim();
+      if (occurrence) {
+        const exists = allRecords.some((item) => (item.occurrenceNumber || '').trim() === occurrence);
+        if (exists) {
+          showAlert(alertError, `O numero de ocorrencia ${occurrence} ja foi registrado.`);
+          setSavingState(false);
+          return;
+        }
+      }
+    }
+
+    try {
+      updateSavingProgress(18, 'Salvando informacoes na plataforma...');
 
     if (currentlyEditingIndex >= 0) {
       const existing = allRecords[currentlyEditingIndex];
@@ -3588,56 +3614,59 @@ const addRecord = async () => {
       }
       allRecords.push(recordData);
     }
-  } catch (error) {
-    // Erro geral na adição do registro
-    if (currentlyEditingIndex >= 0) {
-      allRecords[currentlyEditingIndex] = recordData;
-      currentlyEditingIndex = -1;
-      addRecordBtn.textContent = 'Adicionar Registro';
-    } else {
-      allRecords.push(recordData);
-    }
-  }
-
-  updateSavingProgress(76, 'Salvando os dados na planilha online...');
-  const onlinePhotoLinks = await sendToGoogleSheets(recordData);
-  if (onlinePhotoLinks.length) {
-    recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
-
-    if (db && recordData.id) {
-      try {
-        await db.collection('records').doc(recordData.id).set(
-          {
-            photoUrls: recordData.photoUrls,
-            photosCount: recordData.photoUrls.length,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } catch (error) {
-        // segue com dados locais
+    } catch (error) {
+      // Erro geral na adição do registro
+      if (currentlyEditingIndex >= 0) {
+        allRecords[currentlyEditingIndex] = recordData;
+        currentlyEditingIndex = -1;
+        addRecordBtn.textContent = 'Adicionar Registro';
+      } else {
+        allRecords.push(recordData);
       }
     }
 
+    updateSavingProgress(76, 'Salvando os dados na planilha online...');
+    const onlinePhotoLinks = await sendToGoogleSheets(recordData);
+    if (onlinePhotoLinks.length) {
+      recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
+
+      if (db && recordData.id) {
+        try {
+          await db.collection('records').doc(recordData.id).set(
+            {
+              photoUrls: recordData.photoUrls,
+              photosCount: recordData.photoUrls.length,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (error) {
+          // segue com dados locais
+        }
+      }
+
+      persistLocalIfNeeded();
+    }
+
+    updateSavingProgress(92, 'Finalizando e atualizando a lista...');
+    updateRecordsList();
     persistLocalIfNeeded();
+    populateMonthYearFilters();
+    clearFormAfterRecord();
+
+    // Scroll para o topo do formulário
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Mostrar notificação de sucesso
+    updateSavingProgress(100, 'Registro salvo com sucesso!');
+    setTimeout(() => {
+      setSavingState(false);
+      updateSavingProgress(0, 'Preparando salvamento...');
+    }, 350);
+    showAlert(alertSuccess, 'Registro salvo com sucesso!');
+  } finally {
+    isRecordSaveInProgress = false;
   }
-
-  updateSavingProgress(92, 'Finalizando e atualizando a lista...');
-  updateRecordsList();
-  persistLocalIfNeeded();
-  populateMonthYearFilters();
-  clearFormAfterRecord();
-
-  // Scroll para o topo do formulário
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-
-  // Mostrar notificação de sucesso
-  updateSavingProgress(100, 'Registro salvo com sucesso!');
-  setTimeout(() => {
-    setSavingState(false);
-    updateSavingProgress(0, 'Preparando salvamento...');
-  }, 350);
-  showAlert(alertSuccess, 'Registro salvo com sucesso!');
 };
 
 const editRecord = (index) => {
@@ -3675,8 +3704,9 @@ const editRecord = (index) => {
   if (record.photos && record.photos.length) {
     record.photos.forEach((photo) => addPhotoPreview(photo.data, photo.name));
   }
-  if (record.photoUrls && record.photoUrls.length) {
-    record.photoUrls.forEach((url, index) => {
+  const uniquePhotoLinks = collectRecordPhotoLinks(record);
+  if (uniquePhotoLinks.length) {
+    uniquePhotoLinks.forEach((url, index) => {
       addPhotoPreview(url, `foto_online_${index + 1}.jpg`);
     });
   }
