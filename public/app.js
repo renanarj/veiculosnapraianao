@@ -190,6 +190,11 @@ let publicReports = [];
 let managedUsers = [];
 let pendingDeleteIndex = -1;
 let pendingExternalDeleteDocId = '';
+const externalStatusPanelsOpen = {
+  recebida: false,
+  analise: false,
+  analisada: false,
+};
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
 let latestPublicProtocol = '';
@@ -783,12 +788,31 @@ const renderExternalReportsPanel = () => {
     const columnWrap = document.createElement('section');
     columnWrap.className = 'external-status-column';
 
-    const title = document.createElement('h4');
-    title.innerHTML = `${column.label} <span class="external-status-count">(${grouped[column.key].length})</span>`;
-    columnWrap.appendChild(title);
+    const isOpen = Boolean(externalStatusPanelsOpen[column.key]);
+
+    const titleButton = document.createElement('button');
+    titleButton.type = 'button';
+    titleButton.className = 'external-status-toggle';
+    titleButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    titleButton.innerHTML = `
+      <span>${column.label} <span class="external-status-count">(${grouped[column.key].length})</span></span>
+      <span class="external-status-chevron ${isOpen ? 'is-open' : ''}" aria-hidden="true">▾</span>
+    `;
+    titleButton.addEventListener('click', () => {
+      externalStatusPanelsOpen[column.key] = !externalStatusPanelsOpen[column.key];
+      const nowOpen = Boolean(externalStatusPanelsOpen[column.key]);
+      titleButton.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      list.classList.toggle('hidden', !nowOpen);
+      const chevron = titleButton.querySelector('.external-status-chevron');
+      if (chevron) {
+        chevron.classList.toggle('is-open', nowOpen);
+      }
+    });
+    columnWrap.appendChild(titleButton);
 
     const list = document.createElement('div');
     list.className = 'external-status-list';
+    list.classList.toggle('hidden', !isOpen);
 
     if (!grouped[column.key].length) {
       const empty = document.createElement('p');
