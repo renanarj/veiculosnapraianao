@@ -831,7 +831,10 @@ const renderExternalReportsPanel = () => {
       const statusValue = getPublicReportStatusValue(report.status || 'Recebida');
       const statusMeta = getExternalStatusMeta(statusValue);
       const noteValue = (report.managerNote || '').trim();
-      const safeNoteValue = noteValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      const safeNoteValue = noteValue
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
       const managedBy = (report.managedByAgent || '').trim();
       const canManage = canManageExternalReports();
 
@@ -852,8 +855,17 @@ const renderExternalReportsPanel = () => {
             <option value="Em análise" ${statusValue === 'Em análise' ? 'selected' : ''}>Em análise</option>
             <option value="Analisada" ${statusValue === 'Analisada' ? 'selected' : ''}>Analisada</option>
           </select>
-          <input type="text" class="external-report-note" value="${safeNoteValue}" placeholder="Anotação da equipe" ${canManage ? '' : 'disabled'} />
           <button type="button" class="ghost-btn external-report-save" ${canManage ? '' : 'disabled'}>Salvar</button>
+        </div>
+        <div class="external-report-note-row">
+          <label class="external-report-note-label" for="external-note-${statusMeta.key}-${report.protocol || 'sem-protocolo'}">Recado para o denunciante</label>
+          <textarea
+            id="external-note-${statusMeta.key}-${report.protocol || 'sem-protocolo'}"
+            class="external-report-note"
+            rows="2"
+            placeholder="Escreva um recado para aparecer no acompanhamento por protocolo"
+            ${canManage ? '' : 'disabled'}
+          >${safeNoteValue}</textarea>
         </div>
         <div class="external-report-actions">
           <button type="button" class="ghost-btn external-report-pdf">Gerar PDF</button>

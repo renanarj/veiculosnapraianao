@@ -1629,19 +1629,38 @@ body {
 
 .external-report-manage {
   display: grid;
-  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(140px, 220px) auto;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   align-items: center;
+  justify-content: start;
 }
 
-.external-report-manage select,
-.external-report-manage input {
+.external-report-manage select {
   margin-bottom: 0;
 }
 
 .external-report-save {
   min-height: 40px;
+}
+
+.external-report-note-row {
+  margin-bottom: 8px;
+}
+
+.external-report-note-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #37533a;
+}
+
+.external-report-note {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  margin-bottom: 0;
 }
 
 .badge-recebida {
