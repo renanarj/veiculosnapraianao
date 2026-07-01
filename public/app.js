@@ -3172,19 +3172,29 @@ const buildDuplicateMap = (records) => {
   return map;
 };
 
+const hasIncompleteMonthYearFilter = () => {
+  const month = (filterMonth?.value || '').trim();
+  const year = (filterYear?.value || '').trim();
+  return Boolean((month && !year) || (!month && year));
+};
+
 const applyFilters = (records) => {
   let filtered = [...records];
+  const month = (filterMonth?.value || '').trim();
+  const year = (filterYear?.value || '').trim();
+
+  if ((month && !year) || (!month && year)) {
+    return [];
+  }
+
   if (filterInstitution?.value) {
     filtered = filtered.filter((record) => (record.institution || '') === filterInstitution.value);
   }
   if (filterAgent.value) {
     filtered = filtered.filter((record) => record.agent === filterAgent.value);
   }
-  if (filterMonth.value) {
-    filtered = filtered.filter((record) => (record.date || '').slice(5, 7) === filterMonth.value);
-  }
-  if (filterYear.value) {
-    filtered = filtered.filter((record) => (record.date || '').slice(0, 4) === filterYear.value);
+  if (month && year) {
+    filtered = filtered.filter((record) => (record.date || '').slice(0, 7) === `${year}-${month}`);
   }
   if (filterDateFrom.value) {
     filtered = filtered.filter((record) => (record.date || '') >= filterDateFrom.value);
@@ -3539,7 +3549,7 @@ const updateDashboard = () => {
   if (!statTotal) return;
   const filtered = applyFilters(allRecords);
   const duplicateMap = buildDuplicateMap(filtered);
-  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+  const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
   const uniqueDrivers = new Set(filtered.map((record) => getDriverKey(record)));
   const uniqueVehicles = new Set(
@@ -3556,7 +3566,7 @@ const updateDashboard = () => {
       .filter(Boolean)
   );
   const duplicatesCount = Object.values(duplicateMap).filter((count) => count > 1).length;
-  const currentMonthCount = filtered.filter((record) => (record.date || '').slice(5, 7) === currentMonth)
+  const currentMonthCount = filtered.filter((record) => (record.date || '').slice(0, 7) === currentYearMonth)
     .length;
 
   statTotal.textContent = filtered.length;
@@ -4800,10 +4810,10 @@ const getReportTitle = () => {
     const start = dateFrom ? formatDateBr(dateFrom) : '...';
     const end = dateTo ? formatDateBr(dateTo) : '...';
     titleParts.push(`Relatório do período de ${start} a ${end}`);
-  } else if (filterMonth.value) {
+  } else if (filterMonth.value && filterYear.value) {
     const monthIndex = Number(filterMonth.value) - 1;
     const monthLabel = months[monthIndex] || filterMonth.value;
-    const yearLabel = filterYear.value || String(new Date().getFullYear());
+    const yearLabel = filterYear.value;
     titleParts.push(`Relatório do mês de ${monthLabel} de ${yearLabel}`);
   } else if (filterYear.value) {
     titleParts.push(`Relatório do ano de ${filterYear.value}`);
@@ -4828,6 +4838,11 @@ const getReportTitle = () => {
 };
 
 const generatePDF = async () => {
+  if (hasIncompleteMonthYearFilter()) {
+    showAlert(alertError, 'Para filtrar por período mensal, selecione mês e ano juntos.');
+    return;
+  }
+
   const filteredRecords = getFilteredRecords();
   if (!filteredRecords.length) {
     showAlert(alertError, 'Nenhum registro encontrado para gerar relatório.');
@@ -5249,7 +5264,13 @@ if (toggleAnalysisBtn && analysisPanel) {
 }
 
 if (applyFiltersBtn) {
-  applyFiltersBtn.addEventListener('click', updateDashboard);
+  applyFiltersBtn.addEventListener('click', () => {
+    if (hasIncompleteMonthYearFilter()) {
+      showAlert(alertError, 'Selecione mês e ano juntos para aplicar esse filtro.');
+      return;
+    }
+    updateDashboard();
+  });
 }
 
 if (toggleFiltersBtn && dashboardFiltersPanel) {
