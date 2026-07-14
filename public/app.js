@@ -299,9 +299,13 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) =>
   ]);
 
 const firebaseWriteTimeoutMs = 15000;
-const storageUploadTimeoutMs = 30000;
+const storageUploadTimeoutMs = 90000;
 const storageDownloadUrlTimeoutMs = 15000;
 const googleSheetsTimeoutMs = 30000;
+const uploadImageMaxWidth = 1600;
+const uploadImageMaxHeight = 1600;
+const uploadImageQuality = 0.82;
+const uploadImageMimeType = 'image/jpeg';
 
 const getErrorMessage = (error, fallbackMessage = 'Erro desconhecido.') => {
   if (error && typeof error.message === 'string' && error.message.trim()) {
@@ -331,6 +335,62 @@ const dataUrlToBlob = (dataUrl) => {
     bytes[index] = binary.charCodeAt(index);
   }
   return new Blob([bytes], { type: mimeType });
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result || '');
+    reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
+    reader.readAsDataURL(file);
+  });
+
+const optimizeImageDataUrl = (dataUrl, options = {}) =>
+  new Promise((resolve, reject) => {
+    if (!dataUrl || !String(dataUrl).startsWith('data:image')) {
+      resolve(dataUrl);
+      return;
+    }
+
+    const {
+      maxWidth = uploadImageMaxWidth,
+      maxHeight = uploadImageMaxHeight,
+      quality = uploadImageQuality,
+      mimeType = uploadImageMimeType,
+    } = options;
+
+    const image = new Image();
+    image.onload = () => {
+      const widthScale = maxWidth / image.width;
+      const heightScale = maxHeight / image.height;
+      const scale = Math.min(1, widthScale, heightScale);
+      const targetWidth = Math.max(1, Math.round(image.width * scale));
+      const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('Falha ao preparar imagem para upload.'));
+        return;
+      }
+
+      context.drawImage(image, 0, 0, targetWidth, targetHeight);
+      try {
+        const optimizedDataUrl = canvas.toDataURL(mimeType, quality);
+        resolve(optimizedDataUrl || dataUrl);
+      } catch (error) {
+        reject(new Error('Falha ao compactar imagem para upload.'));
+      }
+    };
+    image.onerror = () => reject(new Error('Falha ao carregar imagem para upload.'));
+    image.src = dataUrl;
+  });
+
+const optimizePhotoFileForUpload = async (file) => {
+  const fileDataUrl = await readFileAsDataUrl(file);
+  return optimizeImageDataUrl(fileDataUrl);
 };
 
 const savePhotoToDevice = async (dataUrl, fileName) => {
@@ -2656,14 +2716,17 @@ const captureFullscreenPhoto = async () => {
     return;
   }
 
+  const widthScale = uploadImageMaxWidth / fullscreenCameraPreview.videoWidth;
+  const heightScale = uploadImageMaxHeight / fullscreenCameraPreview.videoHeight;
+  const scale = Math.min(1, widthScale, heightScale);
   const canvas = document.createElement('canvas');
-  canvas.width = fullscreenCameraPreview.videoWidth;
-  canvas.height = fullscreenCameraPreview.videoHeight;
+  canvas.width = Math.max(1, Math.round(fullscreenCameraPreview.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(fullscreenCameraPreview.videoHeight * scale));
   const context = canvas.getContext('2d');
   context.drawImage(fullscreenCameraPreview, 0, 0, canvas.width, canvas.height);
   drawPhotoMetadataOverlay(context, canvas.width, canvas.height);
 
-  const photoDataUrl = canvas.toDataURL('image/jpeg', 0.98);
+  const photoDataUrl = canvas.toDataURL(uploadImageMimeType, uploadImageQuality);
   const fileName = buildCapturedPhotoFileName();
   addPhotoPreview(photoDataUrl, fileName);
   const savedToDevice = await savePhotoToDevice(photoDataUrl, fileName);
@@ -2736,23 +2799,26 @@ const addPhotoPreview = (dataUrl, fileName) => {
   });
 };
 
-const handlePhotoUpload = (event) => {
+const handlePhotoUpload = async (event) => {
   const files = event.target.files;
   if (!files || files.length === 0) return;
   const unsupportedFiles = [];
 
-  Array.from(files).forEach((file) => {
+  for (const file of Array.from(files)) {
     const mimeType = (file.type || '').toLowerCase();
     const fileName = file.name || 'arquivo';
     const isHeic = mimeType.includes('heic') || mimeType.includes('heif') || /\.(heic|heif)$/i.test(fileName);
     if (isHeic) {
       unsupportedFiles.push(fileName);
-      return;
+      continue;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => addPhotoPreview(e.target.result, file.name);
-    reader.readAsDataURL(file);
-  });
+    try {
+      const optimizedDataUrl = await optimizePhotoFileForUpload(file);
+      addPhotoPreview(optimizedDataUrl, file.name);
+    } catch (error) {
+      unsupportedFiles.push(fileName);
+    }
+  }
 
   if (unsupportedFiles.length) {
     showAlert(
@@ -2832,25 +2898,28 @@ const addPublicReportPhotoPreview = (dataUrl, fileName) => {
   });
 };
 
-const handlePublicPhotoUpload = (event) => {
+const handlePublicPhotoUpload = async (event) => {
   const files = event.target.files;
   if (!files || !files.length) return;
 
   const unsupported = [];
-  Array.from(files).forEach((file) => {
+  for (const file of Array.from(files)) {
     const mimeType = (file.type || '').toLowerCase();
     const fileName = file.name || 'arquivo';
     const isImage = mimeType.startsWith('image/');
     const isHeic = mimeType.includes('heic') || mimeType.includes('heif') || /\.(heic|heif)$/i.test(fileName);
     if (!isImage || isHeic) {
       unsupported.push(fileName);
-      return;
+      continue;
     }
 
-    const reader = new FileReader();
-    reader.onload = (loadEvent) => addPublicReportPhotoPreview(loadEvent.target.result, file.name);
-    reader.readAsDataURL(file);
-  });
+    try {
+      const optimizedDataUrl = await optimizePhotoFileForUpload(file);
+      addPublicReportPhotoPreview(optimizedDataUrl, file.name);
+    } catch (error) {
+      unsupported.push(fileName);
+    }
+  }
 
   if (unsupported.length && publicReportError) {
     showAlert(publicReportError, `Formato não suportado: ${unsupported.join(', ')}. Use JPG, PNG ou WEBP.`);
