@@ -2240,6 +2240,21 @@ const extractPhotoUrls = (photos = []) => {
   return urls;
 };
 
+const getPendingUploadPhotos = (photos = []) =>
+  Array.isArray(photos)
+    ? photos.filter(
+        (photo) => photo?.data && typeof photo.data === 'string' && photo.data.startsWith('data:image')
+      )
+    : [];
+
+const clearResolvedPhotoSyncIssues = (issues, expectedPendingPhotos, resolvedPhotoLinks) => {
+  if (!Array.isArray(issues) || !issues.length) return [];
+  if (!expectedPendingPhotos || resolvedPhotoLinks < expectedPendingPhotos) {
+    return issues;
+  }
+  return issues.filter((issue) => !String(issue).startsWith('Fotos:'));
+};
+
 const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   const existingUrls = extractPhotoUrls(recordData.photos);
   if (!storage || !recordData.photos || recordData.photos.length === 0) {
@@ -3258,8 +3273,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
 
   const successElement = options.successElement || alertSuccess;
   const successMessage = options.successMessage || 'Registro salvo na planilha online com sucesso!';
-  const hasRemotePhotoUrls = Array.isArray(recordData.photoUrls)
-    && recordData.photoUrls.some((url) => typeof url === 'string' && url.startsWith('http'));
+  const pendingUploadPhotos = getPendingUploadPhotos(recordData.photos);
 
   const payload = isPublicReport
     ? {
@@ -3309,7 +3323,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
         location: recordData.location,
         observations: recordData.observations || '',
         timestamp: new Date().toISOString(),
-        photos: hasRemotePhotoUrls ? [] : (recordData.photos || []),
+        photos: pendingUploadPhotos,
         photoUrls: recordData.photoUrls || [],
       };
 
@@ -3505,6 +3519,7 @@ const resendPendingRecord = async (index) => {
     photos: Array.isArray(existingRecord.photos) ? [...existingRecord.photos] : [],
     photoUrls: Array.isArray(existingRecord.photoUrls) ? [...existingRecord.photoUrls] : [],
   };
+  const pendingPhotoCount = getPendingUploadPhotos(recordData.photos).length;
   const syncIssues = [];
 
   try {
@@ -3585,9 +3600,15 @@ const resendPendingRecord = async (index) => {
       }
     }
 
-    if (syncIssues.length) {
+    const reconciledIssues = clearResolvedPhotoSyncIssues(
+      syncIssues,
+      pendingPhotoCount,
+      onlinePhotoLinks.length
+    );
+
+    if (reconciledIssues.length) {
       recordData.syncPending = true;
-      recordData.syncIssues = Array.from(new Set(syncIssues));
+      recordData.syncIssues = Array.from(new Set(reconciledIssues));
     } else {
       recordData.syncPending = false;
       recordData.syncIssues = [];
@@ -3599,8 +3620,8 @@ const resendPendingRecord = async (index) => {
     persistLocalIfNeeded();
     populateMonthYearFilters();
 
-    if (syncIssues.length) {
-      const syncErrorMessage = buildRecordSyncErrorMessage(syncIssues);
+    if (reconciledIssues.length) {
+      const syncErrorMessage = buildRecordSyncErrorMessage(reconciledIssues);
       setSavingState(false);
       updateSavingProgress(0, 'Preparando salvamento...');
       showAlert(alertError, syncErrorMessage);
@@ -4188,6 +4209,7 @@ const addRecord = async () => {
 
     // COPIA AS FOTOS
     recordData.photos = [...photosData];
+    const pendingPhotoCount = getPendingUploadPhotos(recordData.photos).length;
 
     if (!recordData.agent) {
       const loggedAgent = localStorage.getItem(sessionKey);
@@ -4342,9 +4364,15 @@ const addRecord = async () => {
       persistLocalIfNeeded();
     }
 
-    if (syncIssues.length) {
+    const reconciledIssues = clearResolvedPhotoSyncIssues(
+      syncIssues,
+      pendingPhotoCount,
+      onlinePhotoLinks.length
+    );
+
+    if (reconciledIssues.length) {
       recordData.syncPending = true;
-      recordData.syncIssues = Array.from(new Set(syncIssues));
+      recordData.syncIssues = Array.from(new Set(reconciledIssues));
     } else {
       recordData.syncPending = false;
       recordData.syncIssues = [];
@@ -4355,8 +4383,8 @@ const addRecord = async () => {
     persistLocalIfNeeded();
     populateMonthYearFilters();
 
-    if (syncIssues.length) {
-      const syncErrorMessage = buildRecordSyncErrorMessage(syncIssues);
+    if (reconciledIssues.length) {
+      const syncErrorMessage = buildRecordSyncErrorMessage(reconciledIssues);
       currentlyEditingIndex = savedRecordIndex;
       addRecordBtn.textContent = 'Tentar Reenviar';
       window.scrollTo({ top: 0, behavior: 'smooth' });
