@@ -2275,45 +2275,80 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   const basePath = `records/${recordId}`;
   const dataPhotos = recordData.photos.filter((photo) => photo?.data && photo.data.startsWith('data:image'));
   const totalPhotos = dataPhotos.length;
-  let uploadedCount = 0;
+  let completedCount = 0;
 
   if (typeof onProgress === 'function' && totalPhotos > 0) {
     onProgress(0, `Preparando upload de ${totalPhotos} imagem(ns)...`);
   }
 
-  for (let index = 0; index < recordData.photos.length; index++) {
-    const photo = recordData.photos[index];
-    if (!photo?.data || !photo.data.startsWith('data:image')) continue;
-    try {
-      const safeName = (photo.name || `foto_${index + 1}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${safeName}`);
+  const uploadResults = await Promise.allSettled(
+    dataPhotos.map(async (photo, dataIndex) => {
+      const originalIndex = recordData.photos.indexOf(photo);
+      const displayIndex = originalIndex >= 0 ? originalIndex + 1 : dataIndex + 1;
+      const safeName = (photo.name || `foto_${displayIndex}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${displayIndex}_${safeName}`);
+
       await withTimeout(
         storageRef.putString(photo.data, 'data_url'),
         storageUploadTimeoutMs,
-        `Timeout no upload da foto ${index + 1}.`
+        `Timeout no upload da foto ${displayIndex}.`
       );
       const downloadUrl = await withTimeout(
         storageRef.getDownloadURL(),
         storageDownloadUrlTimeoutMs,
-        `Timeout ao obter URL da foto ${index + 1}.`
+        `Timeout ao obter URL da foto ${displayIndex}.`
       );
-      uploadedUrls.push(downloadUrl);
-      uploadedCount += 1;
-      if (typeof onProgress === 'function' && totalPhotos > 0) {
-        const uploadPercent = Math.round((uploadedCount / totalPhotos) * 100);
-        onProgress(uploadPercent, `Salvando imagens online (${uploadedCount}/${totalPhotos})...`);
-      }
-    } catch (error) {
-      failedPhotos.push(`foto ${index + 1}: ${getErrorMessage(error, 'falha no upload')}`);
+
+      return { index: originalIndex >= 0 ? originalIndex : dataIndex, url: downloadUrl };
+    })
+  );
+
+  uploadResults.forEach((result, resultIndex) => {
+    completedCount += 1;
+    if (result.status === 'fulfilled' && result.value?.url) {
+      uploadedUrls[result.value.index] = result.value.url;
+    } else {
+      const displayIndex = result.status === 'rejected' ? resultIndex + 1 : resultIndex + 1;
+      const reason = result.status === 'rejected' ? result.reason : new Error('falha no upload');
+      failedPhotos.push(`foto ${displayIndex}: ${getErrorMessage(reason, 'falha no upload')}`);
     }
-  }
+
+    if (typeof onProgress === 'function' && totalPhotos > 0) {
+      const uploadPercent = Math.round((completedCount / totalPhotos) * 100);
+      onProgress(uploadPercent, `Salvando imagens online (${completedCount}/${totalPhotos})...`);
+    }
+  });
 
   if (typeof onProgress === 'function') {
     onProgress(100, failedPhotos.length ? 'Upload de imagens concluido com pendencias.' : 'Upload de imagens concluido.');
   }
 
-  const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
+  const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls.filter(Boolean)]));
   return { pdfUrl: '', photoUrls: mergedUrls, failedPhotos };
+};
+
+const syncRecordPhotosInBackground = (recordData, recordId) => {
+  if (!db || !recordId) return;
+  const pendingPhotos = getPendingUploadPhotos(recordData.photos);
+  if (!pendingPhotos.length) return;
+
+  void (async () => {
+    try {
+      const backgroundAssets = await uploadRecordAssets({ ...recordData, photos: pendingPhotos }, recordId);
+      if (backgroundAssets.photoUrls && backgroundAssets.photoUrls.length) {
+        await db.collection('records').doc(recordId).set(
+          {
+            photoUrls: backgroundAssets.photoUrls,
+            photosCount: backgroundAssets.photoUrls.length,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    } catch (error) {
+      // Sincronização secundária das fotos não pode bloquear o fluxo principal.
+    }
+  })();
 };
 
 const fetchImageAsDataUrl = async (url) => {
@@ -3568,32 +3603,6 @@ const resendPendingRecord = async (index) => {
       }
     }
 
-    if (db && recordData.id) {
-      try {
-        updateSavingProgress(34, 'Iniciando upload das imagens...');
-        const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
-          const mapped = 34 + Math.round((photoPercent / 100) * 36);
-          updateSavingProgress(mapped, stepText);
-        });
-        if (assets.photoUrls && assets.photoUrls.length) {
-          recordData.photoUrls = assets.photoUrls;
-          await db.collection('records').doc(recordData.id).set(
-            {
-              photoUrls: assets.photoUrls,
-              photosCount: assets.photoUrls.length,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-        if (assets.failedPhotos?.length) {
-          syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
-        }
-      } catch (assetError) {
-        syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
-      }
-    }
-
     updateSavingProgress(76, 'Salvando os dados na planilha online...');
     const sheetResult = await sendToGoogleSheets(recordData);
     const onlinePhotoLinks = sheetResult.photoLinks || [];
@@ -4272,31 +4281,6 @@ const addRecord = async () => {
       } else if (recordId) {
         recordData.id = recordId;
       }
-      if (db && recordData.id) {
-        try {
-          updateSavingProgress(34, 'Iniciando upload das imagens...');
-          const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
-            const mapped = 34 + Math.round((photoPercent / 100) * 36);
-            updateSavingProgress(mapped, stepText);
-          });
-          if (assets.photoUrls && assets.photoUrls.length) {
-            recordData.photoUrls = assets.photoUrls;
-            await db.collection('records').doc(recordData.id).set(
-              {
-                photoUrls: assets.photoUrls,
-                photosCount: assets.photoUrls.length,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-          if (assets.failedPhotos?.length) {
-            syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
-          }
-        } catch (assetError) {
-          syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
-        }
-      }
       allRecords[currentlyEditingIndex] = recordData;
       savedRecordIndex = startedEditingIndex;
       currentlyEditingIndex = -1;
@@ -4313,31 +4297,6 @@ const addRecord = async () => {
           recordData.id = docRef.id;
         } catch (fbError) {
           syncIssues.push(`Firebase: ${getErrorMessage(fbError, 'falha ao salvar os dados')}`);
-        }
-      }
-      if (db && recordData.id) {
-        try {
-          updateSavingProgress(34, 'Iniciando upload das imagens...');
-          const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
-            const mapped = 34 + Math.round((photoPercent / 100) * 36);
-            updateSavingProgress(mapped, stepText);
-          });
-          if (assets.photoUrls && assets.photoUrls.length) {
-            recordData.photoUrls = assets.photoUrls;
-            await db.collection('records').doc(recordData.id).set(
-              {
-                photoUrls: assets.photoUrls,
-                photosCount: assets.photoUrls.length,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-          if (assets.failedPhotos?.length) {
-            syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
-          }
-        } catch (assetError) {
-          syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
         }
       }
       allRecords.push(recordData);
@@ -4381,6 +4340,10 @@ const addRecord = async () => {
       }
 
       persistLocalIfNeeded();
+    }
+
+    if (sheetResult.synced && db && recordData.id) {
+      syncRecordPhotosInBackground(recordData, recordData.id);
     }
 
     const reconciledIssues = clearResolvedPhotoSyncIssues(
