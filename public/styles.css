@@ -638,6 +638,15 @@ button:disabled {
 .share-record {
   padding: 8px 12px;
   border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  border: none;
+  color: #ffffff;
+  width: auto;
+  margin: 0;
+  box-shadow: var(--shadow-soft);
+}
+
 .save-photo {
   position: absolute;
   left: 6px;
@@ -654,15 +663,9 @@ button:disabled {
   font-weight: 700;
   line-height: 1.1;
 }
+
 .save-photo:hover {
   background: rgba(0, 69, 33, 0.96);
-  cursor: pointer;
-  font-size: 0.9rem;
-  border: none;
-  color: #ffffff;
-  width: auto;
-  margin: 0;
-  box-shadow: var(--shadow-soft);
 }
 
 .edit-record {
