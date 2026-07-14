@@ -2247,9 +2247,15 @@ const getPendingUploadPhotos = (photos = []) =>
       )
     : [];
 
-const clearResolvedPhotoSyncIssues = (issues, expectedPendingPhotos, resolvedPhotoLinks) => {
+const clearResolvedPhotoSyncIssues = (issues, expectedPendingPhotos, resolvedPhotoLinks, backendSynced) => {
   if (!Array.isArray(issues) || !issues.length) return [];
-  if (!expectedPendingPhotos || resolvedPhotoLinks < expectedPendingPhotos) {
+  if (!expectedPendingPhotos) {
+    return issues;
+  }
+  if (backendSynced) {
+    return issues.filter((issue) => !String(issue).startsWith('Fotos:'));
+  }
+  if (resolvedPhotoLinks < expectedPendingPhotos) {
     return issues;
   }
   return issues.filter((issue) => !String(issue).startsWith('Fotos:'));
@@ -3603,7 +3609,8 @@ const resendPendingRecord = async (index) => {
     const reconciledIssues = clearResolvedPhotoSyncIssues(
       syncIssues,
       pendingPhotoCount,
-      onlinePhotoLinks.length
+      onlinePhotoLinks.length,
+      sheetResult.synced
     );
 
     if (reconciledIssues.length) {
@@ -4367,7 +4374,8 @@ const addRecord = async () => {
     const reconciledIssues = clearResolvedPhotoSyncIssues(
       syncIssues,
       pendingPhotoCount,
-      onlinePhotoLinks.length
+      onlinePhotoLinks.length,
+      sheetResult.synced
     );
 
     if (reconciledIssues.length) {
