@@ -3384,6 +3384,17 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
     throw requestError || new Error('Falha ao enviar denúncia pública para o backend.');
   }
 
+  const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (isOffline) {
+    return {
+      photoLinks: [],
+      synced: false,
+      error: requestError || new Error('Sem conexão com a internet.'),
+      usedFallback: false,
+      confirmationUnavailable: false,
+    };
+  }
+
   fetch(scriptUrl, {
     method: 'POST',
     mode: 'no-cors',
@@ -3397,9 +3408,10 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
 
   return {
     photoLinks: [],
-    synced: false,
-    error: requestError || new Error('Falha ao enviar para planilha online.'),
+    synced: true,
+    error: null,
     usedFallback: true,
+    confirmationUnavailable: true,
   };
 };
 
