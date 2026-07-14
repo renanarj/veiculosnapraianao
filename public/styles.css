@@ -638,6 +638,24 @@ button:disabled {
 .share-record {
   padding: 8px 12px;
   border-radius: 10px;
+.save-photo {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  margin: 0;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 69, 33, 0.88);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.save-photo:hover {
+  background: rgba(0, 69, 33, 0.96);
   cursor: pointer;
   font-size: 0.9rem;
   border: none;
@@ -1817,6 +1835,23 @@ body {
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.badge-warning {
+  background: #fff7cc;
+  color: #92400e;
+}
+
+.record-item-pending {
+  border-left: 4px solid #d97706;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(255, 255, 255, 0.96));
+}
+
+.record-sync-hint {
+  margin-top: 8px;
+  color: #92400e;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .ghost-btn {

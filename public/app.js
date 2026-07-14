@@ -246,6 +246,9 @@ const backupStorageKey = 'fiscalRecordsBackup';
 const sessionKey = 'loggedAgent';
 const sessionInstitutionKey = 'loggedInstitution';
 const migrationKey = 'recordsMigratedToFirestore';
+const indexedDbName = 'veiculosNaPraiaNaoOffline';
+const indexedDbVersion = 1;
+const indexedDbStoreName = 'recordsCache';
 let db = null;
 let storage = null;
 let auth = null;
@@ -282,6 +285,11 @@ const formatDateBr = (dateValue) => {
   return `${day}/${month}/${year}`;
 };
 
+const buildCapturedPhotoFileName = () => {
+  const occurrence = (occurrenceNumberInput?.value || 'registro').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `camera_${occurrence}_${Date.now()}.jpg`;
+};
+
 const withTimeout = (promise, timeoutMs, timeoutMessage) =>
   Promise.race([
     promise,
@@ -289,6 +297,72 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) =>
       setTimeout(() => reject(new Error(timeoutMessage || 'Tempo limite excedido.')), timeoutMs)
     ),
   ]);
+
+const firebaseWriteTimeoutMs = 15000;
+const storageUploadTimeoutMs = 30000;
+const storageDownloadUrlTimeoutMs = 15000;
+const googleSheetsTimeoutMs = 30000;
+
+const getErrorMessage = (error, fallbackMessage = 'Erro desconhecido.') => {
+  if (error && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+  return fallbackMessage;
+};
+
+const buildRecordSyncErrorMessage = (issues) => {
+  const details = Array.from(new Set((issues || []).filter(Boolean)));
+  if (!details.length) {
+    return 'Registro salvo localmente, mas a sincronização online falhou. Verifique a conexão e tente reenviar.';
+  }
+  return `Registro salvo localmente, mas a sincronização online falhou (${details.join(' | ')}). Verifique a conexão e toque em "Tentar Reenviar" para enviar novamente.`;
+};
+
+const dataUrlToBlob = (dataUrl) => {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) {
+    throw new Error('Imagem inválida para salvar no dispositivo.');
+  }
+  const mimeMatch = parts[0].match(/data:(.*?);base64/);
+  const mimeType = mimeMatch?.[1] || 'image/jpeg';
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+};
+
+const savePhotoToDevice = async (dataUrl, fileName) => {
+  if (!dataUrl || !String(dataUrl).startsWith('data:image')) {
+    return false;
+  }
+
+  try {
+    const blob = dataUrlToBlob(dataUrl);
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName || `foto_${Date.now()}.jpg`;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+const isRecordSyncPending = (record) => Boolean(record?.syncPending);
+
+const getRecordSyncIssuePreview = (record) => {
+  const issues = Array.isArray(record?.syncIssues) ? record.syncIssues.filter(Boolean) : [];
+  if (!issues.length) return 'Sincronização online pendente.';
+  return issues.join(' | ');
+};
 
 const normalizeText = (text) =>
   (text || '')
@@ -1829,6 +1903,69 @@ const loadRecordsFromStorage = (key = storageKey) => {
   }
 };
 
+const openOfflineRecordsDb = () =>
+  new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      resolve(null);
+      return;
+    }
+
+    const request = window.indexedDB.open(indexedDbName, indexedDbVersion);
+    request.onerror = () => reject(request.error || new Error('Falha ao abrir o IndexedDB.'));
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(indexedDbStoreName)) {
+        database.createObjectStore(indexedDbStoreName, { keyPath: 'cacheKey' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+  });
+
+const loadRecordsFromIndexedDb = async (key = storageKey) => {
+  try {
+    const database = await openOfflineRecordsDb();
+    if (!database) return [];
+
+    const result = await new Promise((resolve, reject) => {
+      const transaction = database.transaction(indexedDbStoreName, 'readonly');
+      const store = transaction.objectStore(indexedDbStoreName);
+      const request = store.get(key);
+      request.onerror = () => reject(request.error || new Error('Falha ao ler cache offline.'));
+      request.onsuccess = () => resolve(request.result);
+    });
+
+    database.close();
+    const records = Array.isArray(result?.records) ? result.records : [];
+    return records;
+  } catch (error) {
+    return [];
+  }
+};
+
+const saveRecordsToIndexedDb = async (key, records) => {
+  try {
+    const database = await openOfflineRecordsDb();
+    if (!database) return false;
+
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(indexedDbStoreName, 'readwrite');
+      const store = transaction.objectStore(indexedDbStoreName);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Falha ao gravar cache offline.'));
+      store.put({
+        cacheKey: key,
+        records,
+        updatedAt: Date.now(),
+      });
+    });
+
+    database.close();
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 const loadRecordsFromFirestore = async () => {
   if (!db) return [];
   try {
@@ -1861,12 +1998,52 @@ const getRecordMergeKey = (record) =>
     normalizeText(record.infractorName || ''),
   ].join('|');
 
+const normalizePhotoArray = (photos) =>
+  Array.isArray(photos)
+    ? photos.filter(
+        (photo) =>
+          Boolean(
+            (typeof photo === 'string' && photo.startsWith('http'))
+              || (photo && typeof photo === 'object' && (photo.data || photo.url))
+          )
+      )
+    : [];
+
+const normalizePhotoUrlsArray = (photoUrls) =>
+  Array.isArray(photoUrls)
+    ? photoUrls.filter((url) => typeof url === 'string' && url.startsWith('http'))
+    : [];
+
+const mergeRecordVersions = (preferredRecord = {}, fallbackRecord = {}) => {
+  const preferredPhotos = normalizePhotoArray(preferredRecord.photos);
+  const fallbackPhotos = normalizePhotoArray(fallbackRecord.photos);
+  const preferredUrls = normalizePhotoUrlsArray(preferredRecord.photoUrls);
+  const fallbackUrls = normalizePhotoUrlsArray(fallbackRecord.photoUrls);
+  const preferredSyncIssues = Array.isArray(preferredRecord.syncIssues) ? preferredRecord.syncIssues.filter(Boolean) : [];
+  const fallbackSyncIssues = Array.isArray(fallbackRecord.syncIssues) ? fallbackRecord.syncIssues.filter(Boolean) : [];
+  const syncPending = Boolean(preferredRecord.syncPending || fallbackRecord.syncPending);
+
+  return {
+    ...fallbackRecord,
+    ...preferredRecord,
+    photos: preferredPhotos.length ? preferredPhotos : fallbackPhotos,
+    photoUrls: Array.from(new Set([...fallbackUrls, ...preferredUrls])),
+    syncPending,
+    syncIssues: syncPending ? Array.from(new Set([...fallbackSyncIssues, ...preferredSyncIssues])) : [],
+  };
+};
+
 const mergeRecords = (primaryRecords = [], secondaryRecords = []) => {
   const mergedMap = new Map();
   [...secondaryRecords, ...primaryRecords].forEach((record) => {
     const mergeKey = getRecordMergeKey(record || {});
     if (!mergeKey) return;
-    mergedMap.set(mergeKey, record);
+    const existingRecord = mergedMap.get(mergeKey);
+    if (!existingRecord) {
+      mergedMap.set(mergeKey, record);
+      return;
+    }
+    mergedMap.set(mergeKey, mergeRecordVersions(record, existingRecord));
   });
   return Array.from(mergedMap.values());
 };
@@ -1874,7 +2051,11 @@ const mergeRecords = (primaryRecords = [], secondaryRecords = []) => {
 const loadRecords = async () => {
   const localRecords = loadRecordsFromStorage(storageKey);
   const backupRecords = loadRecordsFromStorage(backupStorageKey);
-  const localMerged = mergeRecords(localRecords, backupRecords);
+  const indexedDbRecords = await loadRecordsFromIndexedDb(storageKey);
+  const indexedDbBackupRecords = await loadRecordsFromIndexedDb(backupStorageKey);
+  const browserCacheMerged = mergeRecords(localRecords, backupRecords);
+  const indexedDbMerged = mergeRecords(indexedDbRecords, indexedDbBackupRecords);
+  const localMerged = mergeRecords(browserCacheMerged, indexedDbMerged);
 
   if (!db) return localMerged;
 
@@ -1957,8 +2138,14 @@ const migrateLocalToFirestore = async () => {
 };
 
 const saveRecordsToStorage = () => {
-  localStorage.setItem(storageKey, JSON.stringify(allRecords));
-  localStorage.setItem(backupStorageKey, JSON.stringify(allRecords));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(allRecords));
+    localStorage.setItem(backupStorageKey, JSON.stringify(allRecords));
+  } catch (error) {
+    console.error('Falha ao salvar registros no localStorage:', error);
+  }
+  void saveRecordsToIndexedDb(storageKey, allRecords);
+  void saveRecordsToIndexedDb(backupStorageKey, allRecords);
 };
 
 const persistLocalIfNeeded = () => {
@@ -1968,6 +2155,8 @@ const persistLocalIfNeeded = () => {
 const buildRecordPayload = (recordData, isNew) => {
   const payload = { ...recordData };
   delete payload.photos;
+  delete payload.syncPending;
+  delete payload.syncIssues;
   const photoUrlsCount = recordData.photoUrls?.length || 0;
   payload.photosCount = photoUrlsCount || recordData.photos?.length || 0;
   payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
@@ -1997,10 +2186,11 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
     if (typeof onProgress === 'function') {
       onProgress(100, 'Nenhuma imagem nova para enviar.');
     }
-    return { pdfUrl: '', photoUrls: existingUrls };
+    return { pdfUrl: '', photoUrls: existingUrls, failedPhotos: [] };
   }
 
   const uploadedUrls = [];
+  const failedPhotos = [];
   const basePath = `records/${recordId}`;
   const dataPhotos = recordData.photos.filter((photo) => photo?.data && photo.data.startsWith('data:image'));
   const totalPhotos = dataPhotos.length;
@@ -2018,12 +2208,12 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
       const storageRef = storage.ref().child(`${basePath}/${Date.now()}_${safeName}`);
       await withTimeout(
         storageRef.putString(photo.data, 'data_url'),
-        15000,
+        storageUploadTimeoutMs,
         `Timeout no upload da foto ${index + 1}.`
       );
       const downloadUrl = await withTimeout(
         storageRef.getDownloadURL(),
-        10000,
+        storageDownloadUrlTimeoutMs,
         `Timeout ao obter URL da foto ${index + 1}.`
       );
       uploadedUrls.push(downloadUrl);
@@ -2033,16 +2223,16 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
         onProgress(uploadPercent, `Salvando imagens online (${uploadedCount}/${totalPhotos})...`);
       }
     } catch (error) {
-      // Se uma foto falhar, segue com as demais sem bloquear o salvamento
+      failedPhotos.push(`foto ${index + 1}: ${getErrorMessage(error, 'falha no upload')}`);
     }
   }
 
   if (typeof onProgress === 'function') {
-    onProgress(100, 'Upload de imagens concluido.');
+    onProgress(100, failedPhotos.length ? 'Upload de imagens concluido com pendencias.' : 'Upload de imagens concluido.');
   }
 
   const mergedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
-  return { pdfUrl: '', photoUrls: mergedUrls };
+  return { pdfUrl: '', photoUrls: mergedUrls, failedPhotos };
 };
 
 const fetchImageAsDataUrl = async (url) => {
@@ -2474,10 +2664,20 @@ const captureFullscreenPhoto = async () => {
   drawPhotoMetadataOverlay(context, canvas.width, canvas.height);
 
   const photoDataUrl = canvas.toDataURL('image/jpeg', 0.98);
-  addPhotoPreview(photoDataUrl, 'camera_' + new Date().getTime() + '.jpg');
+  const fileName = buildCapturedPhotoFileName();
+  addPhotoPreview(photoDataUrl, fileName);
+  const savedToDevice = await savePhotoToDevice(photoDataUrl, fileName);
   
   closeFullscreenCamera();
-  showAlert(alertSuccess, 'Foto capturada com sucesso!');
+  if (savedToDevice) {
+    showAlert(alertSuccess, 'Foto capturada com sucesso e download no dispositivo iniciado.');
+  } else {
+    showAlert(alertSuccess, 'Foto capturada com sucesso!');
+    showPopup(
+      'A foto foi anexada ao registro, mas o navegador não confirmou o salvamento automático no dispositivo. Use o botão "Salvar" na miniatura para garantir uma cópia local.',
+      { title: 'Salvamento local pendente', buttonLabel: 'Entendi' }
+    );
+  }
 };
 
 const toggleCameraFacingMode = () => {
@@ -2507,6 +2707,22 @@ const addPhotoPreview = (dataUrl, fileName) => {
     wrapper.remove();
     photosData = photosData.filter((photo) => photo.id !== photoId);
   });
+
+  if (isDataImage) {
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'save-photo';
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Salvar';
+    saveBtn.addEventListener('click', async () => {
+      const saved = await savePhotoToDevice(dataUrl, fileName || 'foto_veiculo.jpg');
+      if (saved) {
+        showAlert(alertSuccess, 'Download da foto iniciado no dispositivo.');
+      } else {
+        showAlert(alertError, 'O navegador não permitiu salvar a foto automaticamente.');
+      }
+    });
+    wrapper.appendChild(saveBtn);
+  }
 
   wrapper.appendChild(img);
   wrapper.appendChild(removeBtn);
@@ -2962,11 +3178,15 @@ const sendWhatsAppMessage = () => {
 };
 
 const sendToGoogleSheets = async (recordData, options = {}) => {
+  const isPublicReport = options.mode === 'public';
   if (!scriptUrl) {
-    return [];
+    const configError = new Error('URL da planilha online não configurada.');
+    if (isPublicReport) {
+      throw configError;
+    }
+    return { photoLinks: [], synced: false, error: configError, usedFallback: false };
   }
 
-  const isPublicReport = options.mode === 'public';
   const successElement = options.successElement || alertSuccess;
   const successMessage = options.successMessage || 'Registro salvo na planilha online com sucesso!';
   const hasRemotePhotoUrls = Array.isArray(recordData.photoUrls)
@@ -3035,7 +3255,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
         },
         body: JSON.stringify(payload),
       }),
-      20000,
+      googleSheetsTimeoutMs,
       'Timeout ao enviar para planilha online.'
     );
 
@@ -3061,7 +3281,12 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
     }
 
     const photoLinks = Array.isArray(result?.photoLinks) ? result.photoLinks : [];
-    return photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'));
+    return {
+      photoLinks: photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http')),
+      synced: true,
+      error: null,
+      usedFallback: false,
+    };
   } catch (error) {
     requestError = error;
   }
@@ -3081,7 +3306,12 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
     // Falha silenciosa, pois o registro já foi salvo localmente/Firebase
   });
 
-  return [];
+  return {
+    photoLinks: [],
+    synced: false,
+    error: requestError || new Error('Falha ao enviar para planilha online.'),
+    usedFallback: true,
+  };
 };
 
 const updateRecordsList = () => {
@@ -3118,6 +3348,10 @@ const updateRecordsList = () => {
   orderedRecords.forEach(({ record, originalIndex }) => {
     const recordItem = document.createElement('div');
     recordItem.className = 'record-item';
+    if (isRecordSyncPending(record)) {
+      recordItem.classList.add('record-item-pending');
+      recordItem.title = getRecordSyncIssuePreview(record);
+    }
 
     const summary = document.createElement('div');
     summary.className = 'record-info';
@@ -3126,8 +3360,14 @@ const updateRecordsList = () => {
       duplicateCount > 1
         ? `<span class="badge">${duplicateCount} ocorrências</span>`
         : '';
+    const syncBadge = isRecordSyncPending(record)
+      ? '<span class="badge badge-warning">Envio pendente</span>'
+      : '';
     const institutionLabel = record.institution || '--';
-    summary.innerHTML = `<strong>${record.infractorName}</strong> ${duplicateBadge}<br />Nº ${record.occurrenceNumber} • ${record.vehiclePlate}<br />${institutionLabel} • ${record.agent || '--'}`;
+    const syncHint = isRecordSyncPending(record)
+      ? '<div class="record-sync-hint">Esse registro ainda não foi sincronizado totalmente com a planilha/fotos online.</div>'
+      : '';
+    summary.innerHTML = `<strong>${record.infractorName}</strong> ${duplicateBadge} ${syncBadge}<br />Nº ${record.occurrenceNumber} • ${record.vehiclePlate}<br />${institutionLabel} • ${record.agent || '--'}${syncHint}`;
 
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'record-actions';
@@ -3139,6 +3379,15 @@ const updateRecordsList = () => {
     pdfBtn.textContent = 'PDF';
     pdfBtn.type = 'button';
     pdfBtn.addEventListener('click', () => generateSinglePDF(originalIndex));
+
+    if (isRecordSyncPending(record) && canManage) {
+      const resendBtn = document.createElement('button');
+      resendBtn.className = 'ghost-btn';
+      resendBtn.textContent = 'Reenviar agora';
+      resendBtn.type = 'button';
+      resendBtn.addEventListener('click', () => resendPendingRecord(originalIndex));
+      actionsDiv.appendChild(resendBtn);
+    }
 
     if (canManage) {
       const editBtn = document.createElement('button');
@@ -3167,6 +3416,138 @@ const updateRecordsList = () => {
   populateFilterAgents();
   populateInstitutionFilter();
   updateDashboard();
+};
+
+const resendPendingRecord = async (index) => {
+  const existingRecord = allRecords[index];
+  if (!existingRecord) {
+    showAlert(alertError, 'Registro não encontrado para reenvio.');
+    return;
+  }
+  if (!canManageRecord(existingRecord)) {
+    showAlert(alertError, 'Você não tem permissão para reenviar este registro.');
+    return;
+  }
+  if (isRecordSaveInProgress) return;
+
+  isRecordSaveInProgress = true;
+  const recordData = {
+    ...existingRecord,
+    photos: Array.isArray(existingRecord.photos) ? [...existingRecord.photos] : [],
+    photoUrls: Array.isArray(existingRecord.photoUrls) ? [...existingRecord.photoUrls] : [],
+  };
+  const syncIssues = [];
+
+  try {
+    setSavingState(true);
+    updateSavingProgress(8, 'Preparando reenvio do registro...');
+
+    updateSavingProgress(18, 'Salvando informacoes na plataforma...');
+    if (db && recordData.id) {
+      try {
+        const payload = buildRecordPayload(recordData, false);
+        await Promise.race([
+          db.collection('records').doc(recordData.id).set(payload, { merge: true }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), firebaseWriteTimeoutMs))
+        ]);
+      } catch (fbError) {
+        syncIssues.push(`Firebase: ${getErrorMessage(fbError, 'falha ao salvar os dados')}`);
+      }
+    } else if (db) {
+      try {
+        const payload = buildRecordPayload(recordData, true);
+        const docRef = await Promise.race([
+          db.collection('records').add(payload),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), firebaseWriteTimeoutMs))
+        ]);
+        recordData.id = docRef.id;
+      } catch (fbError) {
+        syncIssues.push(`Firebase: ${getErrorMessage(fbError, 'falha ao salvar os dados')}`);
+      }
+    }
+
+    if (db && recordData.id) {
+      try {
+        updateSavingProgress(34, 'Iniciando upload das imagens...');
+        const assets = await uploadRecordAssets(recordData, recordData.id, (photoPercent, stepText) => {
+          const mapped = 34 + Math.round((photoPercent / 100) * 36);
+          updateSavingProgress(mapped, stepText);
+        });
+        if (assets.photoUrls && assets.photoUrls.length) {
+          recordData.photoUrls = assets.photoUrls;
+          await db.collection('records').doc(recordData.id).set(
+            {
+              photoUrls: assets.photoUrls,
+              photosCount: assets.photoUrls.length,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+        if (assets.failedPhotos?.length) {
+          syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
+        }
+      } catch (assetError) {
+        syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
+      }
+    }
+
+    updateSavingProgress(76, 'Salvando os dados na planilha online...');
+    const sheetResult = await sendToGoogleSheets(recordData);
+    const onlinePhotoLinks = sheetResult.photoLinks || [];
+    if (!sheetResult.synced) {
+      syncIssues.push(`Planilha online: ${getErrorMessage(sheetResult.error, 'falha ao enviar os dados')}`);
+    }
+    if (onlinePhotoLinks.length) {
+      recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
+      if (db && recordData.id) {
+        try {
+          await db.collection('records').doc(recordData.id).set(
+            {
+              photoUrls: recordData.photoUrls,
+              photosCount: recordData.photoUrls.length,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (error) {
+          syncIssues.push(`Firebase: ${getErrorMessage(error, 'falha ao atualizar os links das fotos')}`);
+        }
+      }
+    }
+
+    if (syncIssues.length) {
+      recordData.syncPending = true;
+      recordData.syncIssues = Array.from(new Set(syncIssues));
+    } else {
+      recordData.syncPending = false;
+      recordData.syncIssues = [];
+    }
+
+    allRecords[index] = recordData;
+    updateSavingProgress(92, 'Finalizando e atualizando a lista...');
+    updateRecordsList();
+    persistLocalIfNeeded();
+    populateMonthYearFilters();
+
+    if (syncIssues.length) {
+      const syncErrorMessage = buildRecordSyncErrorMessage(syncIssues);
+      setSavingState(false);
+      updateSavingProgress(0, 'Preparando salvamento...');
+      showAlert(alertError, syncErrorMessage);
+      showPopup(syncErrorMessage, { title: 'Falha no reenvio online', buttonLabel: 'Entendi' });
+      return;
+    }
+
+    updateSavingProgress(100, 'Registro sincronizado com sucesso!');
+    setTimeout(() => {
+      setSavingState(false);
+      updateSavingProgress(0, 'Preparando salvamento...');
+    }, 350);
+    showAlert(alertSuccess, 'Registro reenviado com sucesso!');
+  } finally {
+    isRecordSaveInProgress = false;
+  }
 };
 
 const buildDuplicateMap = (records) => {
@@ -3723,9 +4104,14 @@ const addRecord = async () => {
 
     const formData = new FormData(document.getElementById('fiscalizationForm'));
     const recordData = {};
+    const startedEditingIndex = currentlyEditingIndex;
+    let savedRecordIndex = startedEditingIndex;
+    const syncIssues = [];
     formData.forEach((value, key) => {
       recordData[key] = value;
     });
+    recordData.syncPending = false;
+    recordData.syncIssues = [];
 
     if (vehicleNoPlateInput?.checked || isNoPlateValue(recordData.vehiclePlate)) {
       recordData.vehiclePlate = noPlateLabel;
@@ -3767,11 +4153,11 @@ const addRecord = async () => {
           const payload = buildRecordPayload(recordData, false);
           await Promise.race([
             db.collection('records').doc(recordId).set(payload, { merge: true }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), 8000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), firebaseWriteTimeoutMs))
           ]);
           recordData.id = recordId;
         } catch (fbError) {
-          // Firebase falhou, continua com salvamento local
+          syncIssues.push(`Firebase: ${getErrorMessage(fbError, 'falha ao salvar os dados')}`);
         }
       } else if (recordId) {
         recordData.id = recordId;
@@ -3794,11 +4180,15 @@ const addRecord = async () => {
               { merge: true }
             );
           }
+          if (assets.failedPhotos?.length) {
+            syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
+          }
         } catch (assetError) {
-          // Upload de fotos falhou, segue com o registro salvo
+          syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
         }
       }
       allRecords[currentlyEditingIndex] = recordData;
+      savedRecordIndex = startedEditingIndex;
       currentlyEditingIndex = -1;
       addRecordBtn.textContent = 'Adicionar Registro';
     } else {
@@ -3808,11 +4198,11 @@ const addRecord = async () => {
           const payload = buildRecordPayload(recordData, true);
           const docRef = await Promise.race([
             db.collection('records').add(payload),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), 8000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Firebase')), firebaseWriteTimeoutMs))
           ]);
           recordData.id = docRef.id;
         } catch (fbError) {
-          // Firebase falhou, continua com salvamento local
+          syncIssues.push(`Firebase: ${getErrorMessage(fbError, 'falha ao salvar os dados')}`);
         }
       }
       if (db && recordData.id) {
@@ -3833,25 +4223,35 @@ const addRecord = async () => {
               { merge: true }
             );
           }
+          if (assets.failedPhotos?.length) {
+            syncIssues.push(`Fotos: ${assets.failedPhotos.join(', ')}`);
+          }
         } catch (assetError) {
-          // Upload de fotos falhou, segue com o registro salvo
+          syncIssues.push(`Fotos: ${getErrorMessage(assetError, 'falha ao enviar as imagens')}`);
         }
       }
       allRecords.push(recordData);
+      savedRecordIndex = allRecords.length - 1;
     }
     } catch (error) {
       // Erro geral na adição do registro
       if (currentlyEditingIndex >= 0) {
         allRecords[currentlyEditingIndex] = recordData;
+        savedRecordIndex = currentlyEditingIndex;
         currentlyEditingIndex = -1;
         addRecordBtn.textContent = 'Adicionar Registro';
       } else {
         allRecords.push(recordData);
+        savedRecordIndex = allRecords.length - 1;
       }
     }
 
     updateSavingProgress(76, 'Salvando os dados na planilha online...');
-    const onlinePhotoLinks = await sendToGoogleSheets(recordData);
+    const sheetResult = await sendToGoogleSheets(recordData);
+    const onlinePhotoLinks = sheetResult.photoLinks || [];
+    if (!sheetResult.synced) {
+      syncIssues.push(`Planilha online: ${getErrorMessage(sheetResult.error, 'falha ao enviar os dados')}`);
+    }
     if (onlinePhotoLinks.length) {
       recordData.photoUrls = Array.from(new Set([...(recordData.photoUrls || []), ...onlinePhotoLinks]));
 
@@ -3873,10 +4273,31 @@ const addRecord = async () => {
       persistLocalIfNeeded();
     }
 
+    if (syncIssues.length) {
+      recordData.syncPending = true;
+      recordData.syncIssues = Array.from(new Set(syncIssues));
+    } else {
+      recordData.syncPending = false;
+      recordData.syncIssues = [];
+    }
+
     updateSavingProgress(92, 'Finalizando e atualizando a lista...');
     updateRecordsList();
     persistLocalIfNeeded();
     populateMonthYearFilters();
+
+    if (syncIssues.length) {
+      const syncErrorMessage = buildRecordSyncErrorMessage(syncIssues);
+      currentlyEditingIndex = savedRecordIndex;
+      addRecordBtn.textContent = 'Tentar Reenviar';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setSavingState(false);
+      updateSavingProgress(0, 'Preparando salvamento...');
+      showAlert(alertError, syncErrorMessage);
+      showPopup(syncErrorMessage, { title: 'Falha no envio online', buttonLabel: 'Entendi' });
+      return;
+    }
+
     clearFormAfterRecord();
 
     // Scroll para o topo do formulário
@@ -5045,9 +5466,15 @@ window.addEventListener('load', () => {
       }
     } catch (error) {
       managedUsers = loadUsersFromCache();
-      allRecords = loadRecordsFromStorage(storageKey);
+      allRecords = mergeRecords(
+        loadRecordsFromStorage(storageKey),
+        await loadRecordsFromIndexedDb(storageKey)
+      );
       if (!allRecords.length) {
-        allRecords = loadRecordsFromStorage(backupStorageKey);
+        allRecords = mergeRecords(
+          loadRecordsFromStorage(backupStorageKey),
+          await loadRecordsFromIndexedDb(backupStorageKey)
+        );
       }
       updateRecordsList();
       populateFilterAgents();
