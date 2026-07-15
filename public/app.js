@@ -5316,15 +5316,70 @@ const addTechnicalSectionTitle = (doc, title, yPos, marginLeft, contentTop, cont
   return nextY + 6;
 };
 
+const drawJustifiedTechnicalLine = (doc, line, x, y, width, justify) => {
+  const normalizedLine = String(line || '').trim();
+  if (!normalizedLine) return;
+
+  if (!justify) {
+    doc.text(normalizedLine, x, y);
+    return;
+  }
+
+  const words = normalizedLine.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    doc.text(normalizedLine, x, y);
+    return;
+  }
+
+  const baseSpaceWidth = doc.getTextWidth(' ');
+  const wordsWidth = words.reduce((sum, word) => sum + doc.getTextWidth(word), 0);
+  const totalBaseWidth = wordsWidth + baseSpaceWidth * (words.length - 1);
+  const extraSpace = (width - totalBaseWidth) / (words.length - 1);
+
+  if (!Number.isFinite(extraSpace) || extraSpace <= 0) {
+    doc.text(normalizedLine, x, y);
+    return;
+  }
+
+  let currentX = x;
+  words.forEach((word, index) => {
+    doc.text(word, currentX, y);
+    currentX += doc.getTextWidth(word);
+    if (index < words.length - 1) {
+      currentX += baseSpaceWidth + extraSpace;
+    }
+  });
+};
+
 const addTechnicalParagraph = (doc, text, yPos, marginLeft, contentWidth, contentTop, contentBottom) => {
-  const lines = doc.splitTextToSize(String(text || '--'), contentWidth);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  for (const line of lines) {
-    yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
-    doc.text(line, marginLeft, yPos, { align: 'justify', maxWidth: contentWidth });
-    yPos += 5;
-  }
+
+  const paragraphs = String(text || '--')
+    .split('\n')
+    .map((paragraph) => paragraph.trim());
+
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    if (!paragraph) {
+      yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
+      yPos += 5;
+      return;
+    }
+
+    const lines = doc.splitTextToSize(paragraph, contentWidth);
+    lines.forEach((line, lineIndex) => {
+      yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
+      const shouldJustify = lineIndex < lines.length - 1;
+      drawJustifiedTechnicalLine(doc, line, marginLeft, yPos, contentWidth, shouldJustify);
+      yPos += 5;
+    });
+
+    if (paragraphIndex < paragraphs.length - 1) {
+      yPos = ensureTechnicalSpace(doc, yPos, 4, contentTop, contentBottom);
+      yPos += 4;
+    }
+  });
+
   return yPos + 1;
 };
 
