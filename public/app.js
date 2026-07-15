@@ -1408,7 +1408,7 @@ const hasValidRecurrence = (records) => {
 
   for (let index = 1; index < timestamps.length; index += 1) {
     const delta = timestamps[index] - timestamps[index - 1];
-    if (delta > 0 && delta < recurrenceWindowMs) {
+    if (delta >= recurrenceWindowMs) {
       return true;
     }
   }
