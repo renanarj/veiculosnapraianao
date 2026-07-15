@@ -227,6 +227,7 @@ let technicalReportContext = null;
 let technicalReportExtraPhotos = [];
 const usedOccurrenceNumbers = new Set();
 const noPlateLabel = 'VEÍCULO SEM PLACA';
+const recurrenceWindowMs = 2 * 60 * 60 * 1000;
 const publicReportNotificationEmail = 'apa.delta@icmbio.gov.br';
 const maxEmailPdfBase64Length = 5_000_000;
 const maxRecordPdfPhotos = 8;
@@ -1344,24 +1345,21 @@ const canManageRecord = (record) => {
 };
 
 const getDriverKey = (record) => {
+  const driverName = normalizeText(record.infractorName || '');
   const cpf = (record.infractorDoc || '').replace(/\D/g, '');
-  if (cpf) return `cpf:${cpf}`;
+  if (driverName && cpf) return `cpf_name:${cpf}|${driverName}`;
 
-  const driverName = normalizeText(record.infractorName || 'sem_nome');
-  const plate = normalizeText(record.vehiclePlate || '');
-  const vehicleModel = normalizeText(record.vehicleModel || '');
-  const vehicleColor = normalizeText(record.vehicleColor || '');
-  const vehicleYear = normalizeText(record.vehicleYear || '');
+  const fallbackKey = [
+    record?.id || '',
+    record?.occurrenceNumber || '',
+    record?.date || '',
+    record?.time || '',
+    normalizeText(record?.agent || ''),
+  ]
+    .join('|')
+    .trim();
 
-  let vehicleKey = plate;
-  if (!vehicleKey || vehicleKey === normalizedNoPlateLabel) {
-    vehicleKey = [vehicleModel, vehicleColor, vehicleYear].filter(Boolean).join('|');
-  }
-  if (!vehicleKey) {
-    vehicleKey = 'sem_veiculo';
-  }
-
-  return `name_vehicle:${driverName}|${vehicleKey}`;
+  return `no_recurrence:${fallbackKey || 'sem_identificacao'}`;
 };
 
 const getRecordTimestamp = (record) => {
@@ -1396,6 +1394,26 @@ const getRecordCreatedAtTimestamp = (record) => {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+};
+
+const hasValidRecurrence = (records) => {
+  if (!records || records.length < 2) return false;
+
+  const timestamps = records
+    .map((record) => getRecordTimestamp(record) ?? getRecordCreatedAtTimestamp(record))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  if (timestamps.length < 2) return false;
+
+  for (let index = 1; index < timestamps.length; index += 1) {
+    const delta = timestamps[index] - timestamps[index - 1];
+    if (delta > 0 && delta < recurrenceWindowMs) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 const isFirebaseConfigured = () =>
@@ -3716,7 +3734,7 @@ const buildDuplicateMap = (records) => {
 
   const map = {};
   Object.entries(grouped).forEach(([key, driverRecords]) => {
-    map[key] = driverRecords.length;
+    map[key] = hasValidRecurrence(driverRecords) ? driverRecords.length : 1;
   });
   return map;
 };
