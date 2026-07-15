@@ -186,14 +186,10 @@ const technicalReportIssuedAtInput = document.getElementById('technicalReportIss
 const techDriverNameInput = document.getElementById('techDriverName');
 const techDriverCpfInput = document.getElementById('techDriverCpf');
 const techDriverPhoneInput = document.getElementById('techDriverPhone');
-const techDriverMunicipalityInput = document.getElementById('techDriverMunicipality');
-const techDriverAddressInput = document.getElementById('techDriverAddress');
 const techVehiclePlateInput = document.getElementById('techVehiclePlate');
-const techVehicleBrandInput = document.getElementById('techVehicleBrand');
 const techVehicleModelInput = document.getElementById('techVehicleModel');
 const techVehicleColorInput = document.getElementById('techVehicleColor');
 const techVehicleYearInput = document.getElementById('techVehicleYear');
-const techVehicleSituationInput = document.getElementById('techVehicleSituation');
 const techTextSection6Input = document.getElementById('techTextSection6');
 const techTextSection7Input = document.getElementById('techTextSection7');
 const techTextSection8Input = document.getElementById('techTextSection8');
@@ -5039,24 +5035,6 @@ const extractCoordinates = (locationText) => {
   return `${match[1]}, ${match[2]}`;
 };
 
-const inferMunicipalityFromRecord = (record) => {
-  const direct =
-    record?.municipio || record?.municipality || record?.city || record?.cidade || record?.municipalityName;
-  if (String(direct || '').trim()) return String(direct).trim();
-
-  const location = normalizeText(record?.location || '');
-  if (location.includes('luis correia') || location.includes('luis corr')) return 'Luís Correia/PI';
-  if (location.includes('ilha grande')) return 'Ilha Grande/PI';
-  if (location.includes('parnaiba')) return 'Parnaíba/PI';
-  return '--';
-};
-
-const inferAddressFromRecord = (record) => {
-  const direct = record?.endereco || record?.address;
-  if (String(direct || '').trim()) return String(direct).trim();
-  return '--';
-};
-
 const getDriverRecordsByKey = (driverKey) =>
   allRecords
     .filter((record) => getDriverKey(record) === driverKey)
@@ -5198,17 +5176,11 @@ const openTechnicalReportModal = (driverKey) => {
   if (techDriverNameInput) techDriverNameInput.value = mostRecent.infractorName || '--';
   if (techDriverCpfInput) techDriverCpfInput.value = mostRecent.infractorDoc || '--';
   if (techDriverPhoneInput) techDriverPhoneInput.value = mostRecent.whatsapp || '--';
-  if (techDriverMunicipalityInput) techDriverMunicipalityInput.value = inferMunicipalityFromRecord(mostRecent);
-  if (techDriverAddressInput) techDriverAddressInput.value = inferAddressFromRecord(mostRecent);
 
-  const vehiclePlate = mostRecent.vehiclePlate || '--';
-  const vehicleSituation = isNoPlateValue(vehiclePlate) ? 'Sem placa' : 'Com placa';
-  if (techVehiclePlateInput) techVehiclePlateInput.value = vehiclePlate;
-  if (techVehicleBrandInput) techVehicleBrandInput.value = mostRecent.vehicleBrand || mostRecent.brand || '--';
+  if (techVehiclePlateInput) techVehiclePlateInput.value = mostRecent.vehiclePlate || '--';
   if (techVehicleModelInput) techVehicleModelInput.value = mostRecent.vehicleModel || '--';
   if (techVehicleColorInput) techVehicleColorInput.value = mostRecent.vehicleColor || '--';
   if (techVehicleYearInput) techVehicleYearInput.value = mostRecent.vehicleYear || '--';
-  if (techVehicleSituationInput) techVehicleSituationInput.value = vehicleSituation;
 
   if (techTextSection6Input) techTextSection6Input.value = texts.section6;
   if (techTextSection7Input) techTextSection7Input.value = texts.section7;
@@ -5228,6 +5200,7 @@ const buildOccurrenceAllFieldsRows = (record) => {
   const rows = [];
   Object.entries(record || {}).forEach(([field, value]) => {
     if (technicalIgnoredFields.has(field)) return;
+    if (field === 'observations') return;
     const label = getTechnicalFieldLabel(field);
     const formatted = formatTechnicalFieldValue(value);
     rows.push([label, formatted]);
@@ -5401,11 +5374,9 @@ const buildTechnicalReportDoc = (payload, hashValue) => {
       ['Nome', payload.driver.name],
       ['CPF', payload.driver.cpf],
       ['Telefone', payload.driver.phone],
-      ['Município', payload.driver.municipality],
-      ['Endereço', payload.driver.address],
     ],
     margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
-    styles: { fontSize: 9, cellPadding: 2 },
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
     headStyles: { fillColor: [0, 69, 33], textColor: 255 },
     columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 'auto' } },
   });
@@ -5424,14 +5395,12 @@ const buildTechnicalReportDoc = (payload, hashValue) => {
     head: [['Campo', 'Informação']],
     body: [
       ['Placa', payload.vehicle.plate],
-      ['Marca', payload.vehicle.brand],
       ['Modelo', payload.vehicle.model],
       ['Cor', payload.vehicle.color],
       ['Ano', payload.vehicle.year],
-      ['Situação', payload.vehicle.situation],
     ],
     margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
-    styles: { fontSize: 9, cellPadding: 2 },
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak' },
     headStyles: { fillColor: [0, 69, 33], textColor: 255 },
     columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 'auto' } },
   });
@@ -5447,13 +5416,12 @@ const buildTechnicalReportDoc = (payload, hashValue) => {
   );
   doc.autoTable({
     startY: yPos,
-    head: [['Nº da ocorrência', 'Data', 'Hora', 'Local', 'Município', 'Coordenadas', 'Instituição', 'Agente']],
+    head: [['Nº da ocorrência', 'Data', 'Hora', 'Local', 'Coordenadas', 'Instituição', 'Agente']],
     body: orderedRecords.map((record) => [
       record.occurrenceNumber || '--',
       record.date ? formatDateBr(record.date) : '--',
       record.time || '--',
       record.location || '--',
-      inferMunicipalityFromRecord(record),
       extractCoordinates(record.location),
       record.institution || '--',
       record.agent || '--',
@@ -5561,7 +5529,7 @@ const buildTechnicalReportDoc = (payload, hashValue) => {
       const legend = `Ocorrência: ${photo.occurrenceNumber || '--'} | Origem: ${photo.source || '--'} | ${photo.caption || '--'}`;
       const legendLines = doc.splitTextToSize(legend, contentWidth);
       legendLines.forEach((line) => {
-        doc.text(line, marginLeft, yPos);
+        doc.text(line, marginLeft, yPos, { align: 'justify', maxWidth: contentWidth });
         yPos += 4.6;
       });
     });
@@ -5579,24 +5547,6 @@ const buildTechnicalReportDoc = (payload, hashValue) => {
   yPos = addTechnicalParagraph(doc, payload.texts.section9, yPos, marginLeft, contentWidth, contentTop, contentBottom);
   yPos = addTechnicalSectionTitle(doc, '10. Conclusão', yPos, marginLeft, contentTop, contentBottom);
   yPos = addTechnicalParagraph(doc, payload.texts.section10, yPos, marginLeft, contentWidth, contentTop, contentBottom);
-
-  yPos = addTechnicalSectionTitle(doc, 'Assinatura', yPos, marginLeft, contentTop, contentBottom);
-  const signatureLines = [
-    'Relatório gerado automaticamente pela plataforma',
-    'VEÍCULOS NA PRAIA NÃO',
-    'Área de Proteção Ambiental Delta do Parnaíba',
-    'Instituto Chico Mendes de Conservação da Biodiversidade – ICMBio',
-    `Data e hora da geração: ${payload.issuedAt}`,
-    `Versão da aplicação: ${payload.appVersion || '--'}`,
-    `Hash do documento (SHA-256): ${hashValue || '--'}`,
-  ];
-  signatureLines.forEach((line) => {
-    yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(line, marginLeft, yPos);
-    yPos += 5;
-  });
 
   applyTechnicalHeaderFooter(doc, pageWidth, marginLeft, marginRight);
   return doc;
@@ -5643,16 +5593,12 @@ const generateTechnicalReport = async () => {
         name: (techDriverNameInput?.value || '--').trim() || '--',
         cpf: (techDriverCpfInput?.value || '--').trim() || '--',
         phone: (techDriverPhoneInput?.value || '--').trim() || '--',
-        municipality: (techDriverMunicipalityInput?.value || '--').trim() || '--',
-        address: (techDriverAddressInput?.value || '--').trim() || '--',
       },
       vehicle: {
         plate: (techVehiclePlateInput?.value || '--').trim() || '--',
-        brand: (techVehicleBrandInput?.value || '--').trim() || '--',
         model: (techVehicleModelInput?.value || '--').trim() || '--',
         color: (techVehicleColorInput?.value || '--').trim() || '--',
         year: (techVehicleYearInput?.value || '--').trim() || '--',
-        situation: (techVehicleSituationInput?.value || '--').trim() || '--',
       },
       texts: {
         section6: (techTextSection6Input?.value || '--').trim() || '--',
