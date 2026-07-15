@@ -263,6 +263,20 @@ const dashboardCharts = {
 
 const chartPalette = ['#588526', '#7ca136', '#9bc441', '#3f6f1d', '#b7d86b', '#2f5522', '#d9eab3'];
 
+const updateFooterVersion = async () => {
+  const versionEl = document.getElementById('appVersion');
+  if (!versionEl) return;
+
+  try {
+    const response = await fetch('/version.txt', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Falha ao carregar versão (${response.status})`);
+    const version = (await response.text()).trim();
+    versionEl.textContent = version ? `v${version}` : '';
+  } catch (error) {
+    versionEl.textContent = '';
+  }
+};
+
 document.addEventListener(
   'dblclick',
   (event) => {
@@ -5497,6 +5511,8 @@ const generatePDF = async () => {
 
 window.addEventListener('load', () => {
   (async () => {
+    await updateFooterVersion();
+
     try {
       initFirebase();
       await ensureFirebaseAuth();

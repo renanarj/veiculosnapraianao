@@ -1879,6 +1879,19 @@ body {
 .app-footer {
   margin-top: 32px;
 }
+
+.footer-credit {
+  text-align: center;
+  display: block;
+  width: 100%;
+  font-size: 0.76rem;
+}
+
+.footer-version {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
 /* Fullscreen Camera */
 .fullscreen-camera-modal {
   position: fixed;
