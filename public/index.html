@@ -721,6 +721,116 @@
         <span class="footer-credit">Desenvolvido pelo agente Renan Araújo e Silva - Matrícula 1011552</span>
         <span id="appVersion" class="footer-version" aria-label="Versão da aplicação"></span>
       </footer>
+
+      <div
+        id="technicalReportModal"
+        class="modal-overlay hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="technicalReportTitle"
+      >
+        <div class="modal-card technical-report-modal-card">
+          <h3 id="technicalReportTitle">Gerar Relatório Técnico de Reincidência</h3>
+          <p id="technicalReportDriverInfo" class="card-label"></p>
+
+          <div class="technical-report-grid two-columns">
+            <div class="form-group">
+              <label for="technicalReportNumber">Número do relatório</label>
+              <input type="text" id="technicalReportNumber" readonly />
+            </div>
+            <div class="form-group">
+              <label for="technicalReportIssuedAt">Data de emissão</label>
+              <input type="text" id="technicalReportIssuedAt" readonly />
+            </div>
+          </div>
+
+          <h4>1. Identificação do Condutor</h4>
+          <div class="technical-report-grid two-columns">
+            <div class="form-group">
+              <label for="techDriverName">Nome</label>
+              <input type="text" id="techDriverName" />
+            </div>
+            <div class="form-group">
+              <label for="techDriverCpf">CPF</label>
+              <input type="text" id="techDriverCpf" />
+            </div>
+            <div class="form-group">
+              <label for="techDriverPhone">Telefone</label>
+              <input type="text" id="techDriverPhone" />
+            </div>
+            <div class="form-group">
+              <label for="techDriverMunicipality">Município</label>
+              <input type="text" id="techDriverMunicipality" />
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label for="techDriverAddress">Endereço</label>
+              <input type="text" id="techDriverAddress" />
+            </div>
+          </div>
+
+          <h4>2. Identificação do Veículo</h4>
+          <div class="technical-report-grid two-columns">
+            <div class="form-group">
+              <label for="techVehiclePlate">Placa</label>
+              <input type="text" id="techVehiclePlate" />
+            </div>
+            <div class="form-group">
+              <label for="techVehicleBrand">Marca</label>
+              <input type="text" id="techVehicleBrand" />
+            </div>
+            <div class="form-group">
+              <label for="techVehicleModel">Modelo</label>
+              <input type="text" id="techVehicleModel" />
+            </div>
+            <div class="form-group">
+              <label for="techVehicleColor">Cor</label>
+              <input type="text" id="techVehicleColor" />
+            </div>
+            <div class="form-group">
+              <label for="techVehicleYear">Ano</label>
+              <input type="text" id="techVehicleYear" />
+            </div>
+            <div class="form-group">
+              <label for="techVehicleSituation">Situação</label>
+              <input type="text" id="techVehicleSituation" />
+            </div>
+          </div>
+
+          <h4>Textos editáveis do relatório</h4>
+          <div class="form-group">
+            <label for="techTextSection6">6. Fundamentação Técnica</label>
+            <textarea id="techTextSection6" rows="5"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="techTextSection7">7. Fundamentação Normativa</label>
+            <textarea id="techTextSection7" rows="6"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="techTextSection8">8. Fundamentação Legal</label>
+            <textarea id="techTextSection8" rows="6"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="techTextSection9">9. Análise Técnica</label>
+            <textarea id="techTextSection9" rows="4"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="techTextSection10">10. Conclusão</label>
+            <textarea id="techTextSection10" rows="4"></textarea>
+          </div>
+
+          <h4>Fotos complementares (opcional)</h4>
+          <div class="form-group">
+            <input type="file" id="techExtraPhotosInput" accept="image/*" multiple />
+            <div id="techExtraPhotosList" class="activity-photo-list"></div>
+          </div>
+
+          <div class="modal-actions technical-report-actions">
+            <button type="button" id="technicalReportGenerateBtn">GERAR RELATÓRIO DE REINCIDÊNCIA</button>
+            <button type="button" id="technicalReportCloseBtn" class="ghost-btn">Fechar</button>
+          </div>
+        </div>
+      </div>
+
       <div id="savingOverlay" class="saving-overlay hidden" aria-live="polite" aria-busy="true">
         <div class="saving-card">
           <img

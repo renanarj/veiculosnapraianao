@@ -179,6 +179,30 @@ const chartByInstitution = document.getElementById('chartByInstitution');
 const chartByAgent = document.getElementById('chartByAgent');
 const chartByLocation = document.getElementById('chartByLocation');
 const chartRecurrenceRate = document.getElementById('chartRecurrenceRate');
+const technicalReportModal = document.getElementById('technicalReportModal');
+const technicalReportDriverInfo = document.getElementById('technicalReportDriverInfo');
+const technicalReportNumberInput = document.getElementById('technicalReportNumber');
+const technicalReportIssuedAtInput = document.getElementById('technicalReportIssuedAt');
+const techDriverNameInput = document.getElementById('techDriverName');
+const techDriverCpfInput = document.getElementById('techDriverCpf');
+const techDriverPhoneInput = document.getElementById('techDriverPhone');
+const techDriverMunicipalityInput = document.getElementById('techDriverMunicipality');
+const techDriverAddressInput = document.getElementById('techDriverAddress');
+const techVehiclePlateInput = document.getElementById('techVehiclePlate');
+const techVehicleBrandInput = document.getElementById('techVehicleBrand');
+const techVehicleModelInput = document.getElementById('techVehicleModel');
+const techVehicleColorInput = document.getElementById('techVehicleColor');
+const techVehicleYearInput = document.getElementById('techVehicleYear');
+const techVehicleSituationInput = document.getElementById('techVehicleSituation');
+const techTextSection6Input = document.getElementById('techTextSection6');
+const techTextSection7Input = document.getElementById('techTextSection7');
+const techTextSection8Input = document.getElementById('techTextSection8');
+const techTextSection9Input = document.getElementById('techTextSection9');
+const techTextSection10Input = document.getElementById('techTextSection10');
+const techExtraPhotosInput = document.getElementById('techExtraPhotosInput');
+const techExtraPhotosList = document.getElementById('techExtraPhotosList');
+const technicalReportGenerateBtn = document.getElementById('technicalReportGenerateBtn');
+const technicalReportCloseBtn = document.getElementById('technicalReportCloseBtn');
 
 let allRecords = [];
 let currentlyEditingIndex = -1;
@@ -198,9 +222,11 @@ const externalStatusPanelsOpen = {
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
 let latestPublicProtocol = '';
+let currentAppVersion = '';
+let technicalReportContext = null;
+let technicalReportExtraPhotos = [];
 const usedOccurrenceNumbers = new Set();
 const noPlateLabel = 'VEÍCULO SEM PLACA';
-const recurrenceWindowMs = 2 * 60 * 60 * 1000;
 const publicReportNotificationEmail = 'apa.delta@icmbio.gov.br';
 const maxEmailPdfBase64Length = 5_000_000;
 const maxRecordPdfPhotos = 8;
@@ -265,15 +291,20 @@ const chartPalette = ['#588526', '#7ca136', '#9bc441', '#3f6f1d', '#b7d86b', '#2
 
 const updateFooterVersion = async () => {
   const versionEl = document.getElementById('appVersion');
-  if (!versionEl) return;
 
   try {
     const response = await fetch('/version.txt', { cache: 'no-store' });
     if (!response.ok) throw new Error(`Falha ao carregar versão (${response.status})`);
     const version = (await response.text()).trim();
-    versionEl.textContent = version ? `v${version}` : '';
+    currentAppVersion = version || '';
+    if (versionEl) {
+      versionEl.textContent = currentAppVersion ? `v${currentAppVersion}` : '';
+    }
   } catch (error) {
-    versionEl.textContent = '';
+    currentAppVersion = '';
+    if (versionEl) {
+      versionEl.textContent = '';
+    }
   }
 };
 
@@ -1315,7 +1346,22 @@ const canManageRecord = (record) => {
 const getDriverKey = (record) => {
   const cpf = (record.infractorDoc || '').replace(/\D/g, '');
   if (cpf) return `cpf:${cpf}`;
-  return `name:${normalizeText(record.infractorName)}`;
+
+  const driverName = normalizeText(record.infractorName || 'sem_nome');
+  const plate = normalizeText(record.vehiclePlate || '');
+  const vehicleModel = normalizeText(record.vehicleModel || '');
+  const vehicleColor = normalizeText(record.vehicleColor || '');
+  const vehicleYear = normalizeText(record.vehicleYear || '');
+
+  let vehicleKey = plate;
+  if (!vehicleKey || vehicleKey === normalizedNoPlateLabel) {
+    vehicleKey = [vehicleModel, vehicleColor, vehicleYear].filter(Boolean).join('|');
+  }
+  if (!vehicleKey) {
+    vehicleKey = 'sem_veiculo';
+  }
+
+  return `name_vehicle:${driverName}|${vehicleKey}`;
 };
 
 const getRecordTimestamp = (record) => {
@@ -1350,28 +1396,6 @@ const getRecordCreatedAtTimestamp = (record) => {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
-};
-
-const hasValidRecurrence = (records) => {
-  if (!records || records.length < 2) return false;
-
-  const timestamps = records
-    .map((record) => getRecordTimestamp(record))
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-
-  if (timestamps.length >= 2) {
-    for (let index = 1; index < timestamps.length; index += 1) {
-      if (timestamps[index] - timestamps[index - 1] >= recurrenceWindowMs) {
-        return true;
-      }
-    }
-  }
-
-  const distinctDates = new Set(records.map((record) => (record.date || '').trim()).filter(Boolean));
-  if (distinctDates.size > 1) return true;
-
-  return false;
 };
 
 const isFirebaseConfigured = () =>
@@ -3692,7 +3716,7 @@ const buildDuplicateMap = (records) => {
 
   const map = {};
   Object.entries(grouped).forEach(([key, driverRecords]) => {
-    map[key] = hasValidRecurrence(driverRecords) ? driverRecords.length : 1;
+    map[key] = driverRecords.length;
   });
   return map;
 };
@@ -3753,6 +3777,38 @@ const renderStatList = (container, data, emptyMessage) => {
     const row = document.createElement('div');
     row.className = 'stat-item';
     row.innerHTML = `${item.label} <span>${item.value}</span>`;
+    container.appendChild(row);
+  });
+};
+
+const renderDuplicateDriversList = (container, data, emptyMessage) => {
+  container.innerHTML = '';
+  if (!data.length) {
+    container.innerHTML = `<p>${emptyMessage}</p>`;
+    return;
+  }
+
+  data.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'stat-item stat-item-report';
+
+    const driverName = item.name || 'Condutor';
+    const driverDoc = item.doc ? `CPF: ${item.doc}` : 'CPF: --';
+    const occurrences = `${item.count || 0} ocorrências`;
+
+    row.innerHTML = `
+      <div class="stat-main">
+        <strong>${driverName}</strong>
+        <span>${driverDoc} • ${occurrences}</span>
+      </div>
+      <button type="button" class="ghost-btn recurrence-report-btn">GERAR RELATÓRIO DE REINCIDÊNCIA</button>
+    `;
+
+    const actionBtn = row.querySelector('.recurrence-report-btn');
+    if (actionBtn) {
+      actionBtn.addEventListener('click', () => openTechnicalReportModal(item.driverKey));
+    }
+
     container.appendChild(row);
   });
 };
@@ -4125,16 +4181,17 @@ const updateDashboard = () => {
     .map(([key, value]) => {
       const sample = filtered.find((record) => getDriverKey(record) === key);
       const name = sample?.infractorName || 'Condutor';
-      const doc = sample?.infractorDoc ? ` • ${sample.infractorDoc}` : '';
       return {
-        label: `${name}${doc}`,
-        value: `${value} ocorrências`,
+        driverKey: key,
+        name,
+        doc: sample?.infractorDoc || '',
+        count: value,
       };
     });
 
   renderStatList(byAgentList, byAgent, 'Nenhum registro no período.');
   renderStatList(byMonthList, byMonth, 'Nenhum registro no período.');
-  renderStatList(duplicateDriversList, duplicateDrivers, 'Nenhum reincidente no período.');
+  renderDuplicateDriversList(duplicateDriversList, duplicateDrivers, 'Nenhum reincidente no período.');
   renderDashboardCharts(filtered, duplicateMap);
   renderDriversList(filtered);
 };
@@ -4878,6 +4935,730 @@ const sharePDF = async (index) => {
 };
 
 const getFilteredRecords = () => applyFilters(allRecords);
+
+const technicalIgnoredFields = new Set([
+  'id',
+  'photos',
+  'photoUrls',
+  'pdfPhotos',
+  'externalPhotoLinks',
+  'timestamp',
+  'createdAt',
+  'updatedAt',
+  'createdAtLocal',
+  'reportType',
+  'syncPending',
+  'syncIssues',
+  'source',
+]);
+
+const technicalFieldLabelMap = {
+  occurrenceNumber: 'Número da ocorrência',
+  date: 'Data',
+  time: 'Hora',
+  institution: 'Instituição',
+  agent: 'Agente',
+  infractorName: 'Nome do condutor',
+  infractorDoc: 'CPF',
+  whatsapp: 'Telefone',
+  vehiclePlate: 'Placa',
+  vehicleModel: 'Modelo',
+  vehicleColor: 'Cor',
+  vehicleYear: 'Ano',
+  location: 'Local',
+  observations: 'Observações',
+  municipio: 'Município',
+  municipality: 'Município',
+  city: 'Município',
+  endereco: 'Endereço',
+  address: 'Endereço',
+};
+
+const toTitleCase = (text) =>
+  String(text || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^./, (char) => char.toUpperCase());
+
+const getTechnicalFieldLabel = (field) => technicalFieldLabelMap[field] || toTitleCase(field);
+
+const formatTechnicalFieldValue = (value) => {
+  if (value === null || value === undefined) return '--';
+  if (typeof value === 'string') return value.trim() || '--';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    if (!value.length) return '--';
+    return value.map((item) => formatTechnicalFieldValue(item)).join(' | ');
+  }
+  if (typeof value === 'object') {
+    try {
+      const asDate = getFirestoreDateValue(value);
+      if (Number.isFinite(asDate)) {
+        return new Date(asDate).toLocaleString('pt-BR');
+      }
+    } catch (_) {}
+    try {
+      return JSON.stringify(value);
+    } catch (_) {
+      return String(value);
+    }
+  }
+  return String(value);
+};
+
+const formatDateTimeBr = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('pt-BR');
+};
+
+const extractCoordinates = (locationText) => {
+  const source = String(locationText || '');
+  const match = source.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  if (!match) return '--';
+  return `${match[1]}, ${match[2]}`;
+};
+
+const inferMunicipalityFromRecord = (record) => {
+  const direct =
+    record?.municipio || record?.municipality || record?.city || record?.cidade || record?.municipalityName;
+  if (String(direct || '').trim()) return String(direct).trim();
+
+  const location = normalizeText(record?.location || '');
+  if (location.includes('luis correia') || location.includes('luis corr')) return 'Luís Correia/PI';
+  if (location.includes('ilha grande')) return 'Ilha Grande/PI';
+  if (location.includes('parnaiba')) return 'Parnaíba/PI';
+  return '--';
+};
+
+const inferAddressFromRecord = (record) => {
+  const direct = record?.endereco || record?.address;
+  if (String(direct || '').trim()) return String(direct).trim();
+  return '--';
+};
+
+const getDriverRecordsByKey = (driverKey) =>
+  allRecords
+    .filter((record) => getDriverKey(record) === driverKey)
+    .sort((a, b) => {
+      const aTs = getRecordTimestamp(a) ?? getRecordCreatedAtTimestamp(a) ?? 0;
+      const bTs = getRecordTimestamp(b) ?? getRecordCreatedAtTimestamp(b) ?? 0;
+      return aTs - bTs;
+    });
+
+const buildTechnicalReportNumber = () => {
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `RTR-${stamp}-${random}`;
+};
+
+const buildTechnicalTexts = (records = []) => {
+  const count = records.length;
+  const firstDate = records[0]?.date ? formatDateBr(records[0].date) : '--';
+  const lastDate = records[count - 1]?.date ? formatDateBr(records[count - 1].date) : '--';
+
+  return {
+    section6:
+      'O presente relatório foi elaborado com base nas informações registradas na plataforma Veículos na Praia Não, sistema utilizado pela Área de Proteção Ambiental Delta do Parnaíba e instituições parceiras para gerenciamento das ocorrências relacionadas à circulação de veículos automotores em áreas de praia.\n\nApós consulta à base de dados da aplicação, verificou-se a existência de múltiplos registros relacionados ao condutor acima identificado, indicando repetição da conduta em diferentes ações de fiscalização.',
+    section7:
+      'O Plano de Manejo da Área de Proteção Ambiental Delta do Parnaíba, aprovado pela Portaria ICMBio nº 827, de 05 de agosto de 2020, estabelece como normas gerais da Unidade de Conservação:\n\nItem 12 – É proibida a entrada, permanência e circulação de veículos automotores nas praias litorâneas e restingas, ressalvadas as exceções previstas.\n\nItem 13 – É proibida a entrada, permanência e circulação de veículos automotores nas dunas, ressalvadas as exceções previstas.\n\nAs normas constantes do Plano de Manejo possuem caráter obrigatório para todos os usuários da Unidade de Conservação.',
+    section8:
+      'O presente relatório possui finalidade exclusivamente técnica e visa subsidiar eventual procedimento administrativo ambiental.\n\nA conduta registrada poderá caracterizar infração administrativa ambiental prevista no Decreto Federal nº 6.514, de 22 de julho de 2008, especialmente em razão do descumprimento das normas estabelecidas para Unidade de Conservação Federal, cabendo à autoridade ambiental competente proceder ao enquadramento legal aplicável ao caso concreto.\n\nA responsabilização administrativa deverá observar as disposições da Lei nº 9.605, de 12 de fevereiro de 1998 (Lei de Crimes Ambientais), da Lei nº 9.985, de 18 de julho de 2000 (Sistema Nacional de Unidades de Conservação da Natureza), do Decreto nº 6.514/2008 e demais normas ambientais pertinentes.',
+    section9:
+      `Conforme consulta à base de dados da plataforma, verificou-se que o condutor possui ${count} registros distintos relacionados à circulação de veículo automotor em áreas de praia inseridas na Área de Proteção Ambiental Delta do Parnaíba.\n\nAs ocorrências encontram-se distribuídas no período compreendido entre ${firstDate} e ${lastDate}, evidenciando repetição da conduta registrada pelas equipes de fiscalização.`,
+    section10:
+      'Considerando os registros constantes na plataforma Veículos na Praia Não, conclui-se que o histórico de ocorrências do condutor acima identificado constitui elemento técnico relevante para subsidiar eventual procedimento administrativo ambiental.\n\nO presente relatório consolida todas as informações registradas pelas equipes de fiscalização, incluindo dados cadastrais, registros fotográficos, localização geográfica e demais informações coletadas em campo, competindo à autoridade ambiental competente proceder à análise dos fatos e adotar as providências administrativas cabíveis.',
+  };
+};
+
+const renderTechnicalExtraPhotos = () => {
+  if (!techExtraPhotosList) return;
+  techExtraPhotosList.innerHTML = '';
+
+  if (!technicalReportExtraPhotos.length) {
+    const empty = document.createElement('span');
+    empty.className = 'activity-photo-empty';
+    empty.textContent = 'Nenhuma foto complementar adicionada.';
+    techExtraPhotosList.appendChild(empty);
+    return;
+  }
+
+  technicalReportExtraPhotos.forEach((photo, index) => {
+    const item = document.createElement('div');
+    item.className = 'activity-photo-item';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'activity-photo-thumb';
+    thumb.src = photo.dataUrl;
+    thumb.alt = `Foto complementar ${index + 1}`;
+
+    const caption = document.createElement('input');
+    caption.type = 'text';
+    caption.className = 'activity-photo-caption';
+    caption.maxLength = 180;
+    caption.placeholder = 'Legenda da foto';
+    caption.value = photo.caption || '';
+    caption.addEventListener('input', (event) => {
+      technicalReportExtraPhotos[index].caption = event.target.value;
+    });
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'activity-photo-remove';
+    remove.textContent = 'Remover';
+    remove.addEventListener('click', () => {
+      technicalReportExtraPhotos.splice(index, 1);
+      renderTechnicalExtraPhotos();
+    });
+
+    item.appendChild(thumb);
+    item.appendChild(caption);
+    item.appendChild(remove);
+    techExtraPhotosList.appendChild(item);
+  });
+};
+
+const addTechnicalExtraPhotos = async (fileList) => {
+  const imageFiles = Array.from(fileList || []).filter((file) => (file.type || '').startsWith('image/'));
+  if (!imageFiles.length) return;
+
+  const photos = await Promise.all(
+    imageFiles.map(async (file) => ({
+      name: file.name || 'foto_complementar.jpg',
+      dataUrl: await readImageAsDataUrl(file),
+      caption: '',
+    }))
+  );
+
+  technicalReportExtraPhotos = technicalReportExtraPhotos.concat(photos);
+  renderTechnicalExtraPhotos();
+};
+
+const closeTechnicalReportModal = () => {
+  if (!technicalReportModal) return;
+  technicalReportModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+};
+
+const openTechnicalReportModal = (driverKey) => {
+  if (!technicalReportModal) return;
+
+  const records = getDriverRecordsByKey(driverKey);
+  if (!records.length) {
+    showAlert(alertError, 'Nenhum registro encontrado para este condutor.');
+    return;
+  }
+  if (records.length < 2) {
+    showAlert(alertError, 'O relatório técnico é exclusivo para condutores reincidentes.');
+    return;
+  }
+
+  const mostRecent = records[records.length - 1] || {};
+  const reportNumber = buildTechnicalReportNumber();
+  const issuedAt = new Date();
+  const texts = buildTechnicalTexts(records);
+
+  technicalReportContext = {
+    driverKey,
+    records,
+    reportNumber,
+    issuedAt,
+  };
+
+  technicalReportExtraPhotos = [];
+  renderTechnicalExtraPhotos();
+
+  if (technicalReportDriverInfo) {
+    technicalReportDriverInfo.textContent = `${mostRecent.infractorName || 'Condutor'} • ${records.length} ocorrências`;
+  }
+  if (technicalReportNumberInput) technicalReportNumberInput.value = reportNumber;
+  if (technicalReportIssuedAtInput) technicalReportIssuedAtInput.value = formatDateTimeBr(issuedAt);
+
+  if (techDriverNameInput) techDriverNameInput.value = mostRecent.infractorName || '--';
+  if (techDriverCpfInput) techDriverCpfInput.value = mostRecent.infractorDoc || '--';
+  if (techDriverPhoneInput) techDriverPhoneInput.value = mostRecent.whatsapp || '--';
+  if (techDriverMunicipalityInput) techDriverMunicipalityInput.value = inferMunicipalityFromRecord(mostRecent);
+  if (techDriverAddressInput) techDriverAddressInput.value = inferAddressFromRecord(mostRecent);
+
+  const vehiclePlate = mostRecent.vehiclePlate || '--';
+  const vehicleSituation = isNoPlateValue(vehiclePlate) ? 'Sem placa' : 'Com placa';
+  if (techVehiclePlateInput) techVehiclePlateInput.value = vehiclePlate;
+  if (techVehicleBrandInput) techVehicleBrandInput.value = mostRecent.vehicleBrand || mostRecent.brand || '--';
+  if (techVehicleModelInput) techVehicleModelInput.value = mostRecent.vehicleModel || '--';
+  if (techVehicleColorInput) techVehicleColorInput.value = mostRecent.vehicleColor || '--';
+  if (techVehicleYearInput) techVehicleYearInput.value = mostRecent.vehicleYear || '--';
+  if (techVehicleSituationInput) techVehicleSituationInput.value = vehicleSituation;
+
+  if (techTextSection6Input) techTextSection6Input.value = texts.section6;
+  if (techTextSection7Input) techTextSection7Input.value = texts.section7;
+  if (techTextSection8Input) techTextSection8Input.value = texts.section8;
+  if (techTextSection9Input) techTextSection9Input.value = texts.section9;
+  if (techTextSection10Input) techTextSection10Input.value = texts.section10;
+
+  if (techExtraPhotosInput) {
+    techExtraPhotosInput.value = '';
+  }
+
+  technicalReportModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+};
+
+const buildOccurrenceAllFieldsRows = (record) => {
+  const rows = [];
+  Object.entries(record || {}).forEach(([field, value]) => {
+    if (technicalIgnoredFields.has(field)) return;
+    const label = getTechnicalFieldLabel(field);
+    const formatted = formatTechnicalFieldValue(value);
+    rows.push([label, formatted]);
+  });
+  return rows;
+};
+
+const prepareTechnicalPhotoEntries = async (records, extraPhotos = []) => {
+  const entries = [];
+
+  for (const record of records) {
+    const occurrenceLabel = record.occurrenceNumber || '--';
+    let figureIndex = 1;
+
+    if (Array.isArray(record.photos)) {
+      for (const photo of record.photos) {
+        if (!photo?.data || typeof photo.data !== 'string' || !photo.data.startsWith('data:image')) continue;
+        entries.push({
+          dataUrl: photo.data,
+          caption: photo.name || `Foto ${figureIndex}`,
+          occurrenceNumber: occurrenceLabel,
+          source: 'Registro da ocorrência',
+        });
+        figureIndex += 1;
+      }
+    }
+
+    const links = collectRecordPhotoLinks(record);
+    for (const link of links) {
+      try {
+        const dataUrl = await fetchImageAsDataUrl(link);
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+          entries.push({
+            dataUrl,
+            caption: `Foto online ${figureIndex}`,
+            occurrenceNumber: occurrenceLabel,
+            source: 'Registro da ocorrência',
+          });
+          figureIndex += 1;
+        }
+      } catch (_) {
+        // Ignora fotos indisponíveis e segue com as demais.
+      }
+    }
+  }
+
+  extraPhotos.forEach((photo, index) => {
+    if (!photo?.dataUrl) return;
+    entries.push({
+      dataUrl: photo.dataUrl,
+      caption: photo.caption || photo.name || `Foto complementar ${index + 1}`,
+      occurrenceNumber: 'COMPLEMENTAR',
+      source: 'Adicionada no gerador',
+    });
+  });
+
+  return entries;
+};
+
+const drawTechnicalHeader = (doc, pageWidth, marginLeft, marginRight) => {
+  let yPos = 8;
+  try {
+    doc.addImage('/Brasão da república quadrado.png', 'PNG', (pageWidth - 14) / 2, yPos, 14, 14);
+  } catch (_) {}
+
+  yPos += 17;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text('MINISTÉRIO DO MEIO AMBIENTE E MUDANÇA DO CLIMA', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 3.8;
+  doc.text('INSTITUTO CHICO MENDES DE CONSERVAÇÃO DA BIODIVERSIDADE', pageWidth / 2, yPos, {
+    align: 'center',
+  });
+  yPos += 3.8;
+  doc.text('ÁREA DE PROTEÇÃO AMBIENTAL DELTA DO PARNAÍBA', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 3;
+  doc.setDrawColor(0, 69, 33);
+  doc.setLineWidth(0.35);
+  doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
+};
+
+const drawTechnicalFooter = (doc, pageWidth, pageNumber, totalPages) => {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(95, 95, 95);
+  doc.text('Relatório gerado automaticamente pela plataforma Veículos na Praia Não', pageWidth / 2, 286, {
+    align: 'center',
+  });
+  doc.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - 12, 286, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+};
+
+const applyTechnicalHeaderFooter = (doc, pageWidth, marginLeft, marginRight) => {
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    drawTechnicalHeader(doc, pageWidth, marginLeft, marginRight);
+    drawTechnicalFooter(doc, pageWidth, page, totalPages);
+  }
+};
+
+const ensureTechnicalSpace = (doc, yPos, requiredHeight, contentTop, contentBottom) => {
+  if (yPos + requiredHeight <= contentBottom) return yPos;
+  doc.addPage('a4', 'portrait');
+  return contentTop;
+};
+
+const addTechnicalSectionTitle = (doc, title, yPos, marginLeft, contentTop, contentBottom) => {
+  const nextY = ensureTechnicalSpace(doc, yPos, 8, contentTop, contentBottom);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(title, marginLeft, nextY);
+  return nextY + 6;
+};
+
+const addTechnicalParagraph = (doc, text, yPos, marginLeft, contentWidth, contentTop, contentBottom) => {
+  const lines = doc.splitTextToSize(String(text || '--'), contentWidth);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  for (const line of lines) {
+    yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
+    doc.text(line, marginLeft, yPos, { align: 'justify', maxWidth: contentWidth });
+    yPos += 5;
+  }
+  return yPos + 1;
+};
+
+const buildTechnicalReportDoc = (payload, hashValue) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = 210;
+  const marginLeft = 15;
+  const marginRight = 15;
+  const contentTop = 44;
+  const contentBottom = 272;
+  const contentWidth = pageWidth - marginLeft - marginRight;
+
+  const records = payload.records || [];
+  const orderedRecords = [...records].sort((a, b) => {
+    const aTs = getRecordTimestamp(a) ?? getRecordCreatedAtTimestamp(a) ?? 0;
+    const bTs = getRecordTimestamp(b) ?? getRecordCreatedAtTimestamp(b) ?? 0;
+    return aTs - bTs;
+  });
+
+  let yPos = contentTop;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('RELATÓRIO TÉCNICO DE HISTÓRICO DE OCORRÊNCIAS', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 6;
+  doc.setFontSize(10);
+  doc.text('Relatório Técnico de Fiscalização Ambiental', pageWidth / 2, yPos, { align: 'center' });
+  yPos += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.text(`Número do Relatório: ${payload.reportNumber}`, marginLeft, yPos);
+  doc.text(`Data de emissão: ${payload.issuedAt}`, pageWidth - marginRight, yPos, { align: 'right' });
+  yPos += 8;
+
+  yPos = addTechnicalSectionTitle(
+    doc,
+    '1. Identificação do Condutor',
+    yPos,
+    marginLeft,
+    contentTop,
+    contentBottom
+  );
+  doc.autoTable({
+    startY: yPos,
+    head: [['Campo', 'Informação']],
+    body: [
+      ['Nome', payload.driver.name],
+      ['CPF', payload.driver.cpf],
+      ['Telefone', payload.driver.phone],
+      ['Município', payload.driver.municipality],
+      ['Endereço', payload.driver.address],
+    ],
+    margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [0, 69, 33], textColor: 255 },
+    columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 'auto' } },
+  });
+  yPos = (doc.lastAutoTable?.finalY || yPos) + 6;
+
+  yPos = addTechnicalSectionTitle(
+    doc,
+    '2. Identificação do Veículo',
+    yPos,
+    marginLeft,
+    contentTop,
+    contentBottom
+  );
+  doc.autoTable({
+    startY: yPos,
+    head: [['Campo', 'Informação']],
+    body: [
+      ['Placa', payload.vehicle.plate],
+      ['Marca', payload.vehicle.brand],
+      ['Modelo', payload.vehicle.model],
+      ['Cor', payload.vehicle.color],
+      ['Ano', payload.vehicle.year],
+      ['Situação', payload.vehicle.situation],
+    ],
+    margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [0, 69, 33], textColor: 255 },
+    columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 'auto' } },
+  });
+  yPos = (doc.lastAutoTable?.finalY || yPos) + 6;
+
+  yPos = addTechnicalSectionTitle(
+    doc,
+    '3. Histórico de Ocorrências',
+    yPos,
+    marginLeft,
+    contentTop,
+    contentBottom
+  );
+  doc.autoTable({
+    startY: yPos,
+    head: [['Nº da ocorrência', 'Data', 'Hora', 'Local', 'Município', 'Coordenadas', 'Instituição', 'Agente']],
+    body: orderedRecords.map((record) => [
+      record.occurrenceNumber || '--',
+      record.date ? formatDateBr(record.date) : '--',
+      record.time || '--',
+      record.location || '--',
+      inferMunicipalityFromRecord(record),
+      extractCoordinates(record.location),
+      record.institution || '--',
+      record.agent || '--',
+    ]),
+    margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
+    styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak' },
+    headStyles: { fillColor: [0, 69, 33], textColor: 255 },
+  });
+  yPos = (doc.lastAutoTable?.finalY || yPos) + 6;
+
+  yPos = addTechnicalSectionTitle(
+    doc,
+    '4. Informações Coletadas em Campo',
+    yPos,
+    marginLeft,
+    contentTop,
+    contentBottom
+  );
+  orderedRecords.forEach((record) => {
+    yPos = ensureTechnicalSpace(doc, yPos, 8, contentTop, contentBottom);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(`Ocorrência nº ${record.occurrenceNumber || '--'}`, marginLeft, yPos);
+    yPos += 4;
+
+    const rows = buildOccurrenceAllFieldsRows(record);
+    if (!rows.length) {
+      yPos = addTechnicalParagraph(
+        doc,
+        'Sem campos adicionais disponíveis.',
+        yPos,
+        marginLeft,
+        contentWidth,
+        contentTop,
+        contentBottom
+      );
+      return;
+    }
+
+    doc.autoTable({
+      startY: yPos,
+      head: [['Campo', 'Valor']],
+      body: rows,
+      margin: { left: marginLeft, right: marginRight, top: contentTop, bottom: 20 },
+      styles: { fontSize: 8, cellPadding: 1.8, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [0, 69, 33], textColor: 255 },
+      columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 'auto' } },
+    });
+    yPos = (doc.lastAutoTable?.finalY || yPos) + 6;
+  });
+
+  yPos = addTechnicalSectionTitle(
+    doc,
+    '5. Registro Fotográfico',
+    yPos,
+    marginLeft,
+    contentTop,
+    contentBottom
+  );
+  if (!payload.photoEntries.length) {
+    yPos = addTechnicalParagraph(
+      doc,
+      'Não há fotografias disponíveis para este histórico de ocorrências.',
+      yPos,
+      marginLeft,
+      contentWidth,
+      contentTop,
+      contentBottom
+    );
+  } else {
+    payload.photoEntries.forEach((photo, index) => {
+      doc.addPage('a4', 'portrait');
+      yPos = contentTop;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(`Figura ${index + 1}`, marginLeft, yPos);
+      yPos += 5;
+
+      const maxImageWidth = contentWidth;
+      const maxImageHeight = 190;
+      let drawWidth = maxImageWidth;
+      let drawHeight = maxImageHeight;
+
+      try {
+        const props = doc.getImageProperties(photo.dataUrl);
+        if (props?.width && props?.height) {
+          const ratio = Math.min(maxImageWidth / props.width, maxImageHeight / props.height);
+          drawWidth = props.width * ratio;
+          drawHeight = props.height * ratio;
+        }
+      } catch (_) {
+        drawWidth = maxImageWidth;
+        drawHeight = maxImageHeight;
+      }
+
+      const imageX = (pageWidth - drawWidth) / 2;
+      const imageY = yPos;
+      const format = photo.dataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(photo.dataUrl, format, imageX, imageY, drawWidth, drawHeight, undefined, 'MEDIUM');
+
+      yPos = imageY + drawHeight + 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const legend = `Ocorrência: ${photo.occurrenceNumber || '--'} | Origem: ${photo.source || '--'} | ${photo.caption || '--'}`;
+      const legendLines = doc.splitTextToSize(legend, contentWidth);
+      legendLines.forEach((line) => {
+        doc.text(line, marginLeft, yPos);
+        yPos += 4.6;
+      });
+    });
+  }
+
+  doc.addPage('a4', 'portrait');
+  yPos = contentTop;
+  yPos = addTechnicalSectionTitle(doc, '6. Fundamentação Técnica', yPos, marginLeft, contentTop, contentBottom);
+  yPos = addTechnicalParagraph(doc, payload.texts.section6, yPos, marginLeft, contentWidth, contentTop, contentBottom);
+  yPos = addTechnicalSectionTitle(doc, '7. Fundamentação Normativa', yPos, marginLeft, contentTop, contentBottom);
+  yPos = addTechnicalParagraph(doc, payload.texts.section7, yPos, marginLeft, contentWidth, contentTop, contentBottom);
+  yPos = addTechnicalSectionTitle(doc, '8. Fundamentação Legal', yPos, marginLeft, contentTop, contentBottom);
+  yPos = addTechnicalParagraph(doc, payload.texts.section8, yPos, marginLeft, contentWidth, contentTop, contentBottom);
+  yPos = addTechnicalSectionTitle(doc, '9. Análise Técnica', yPos, marginLeft, contentTop, contentBottom);
+  yPos = addTechnicalParagraph(doc, payload.texts.section9, yPos, marginLeft, contentWidth, contentTop, contentBottom);
+  yPos = addTechnicalSectionTitle(doc, '10. Conclusão', yPos, marginLeft, contentTop, contentBottom);
+  yPos = addTechnicalParagraph(doc, payload.texts.section10, yPos, marginLeft, contentWidth, contentTop, contentBottom);
+
+  yPos = addTechnicalSectionTitle(doc, 'Assinatura', yPos, marginLeft, contentTop, contentBottom);
+  const signatureLines = [
+    'Relatório gerado automaticamente pela plataforma',
+    'VEÍCULOS NA PRAIA NÃO',
+    'Área de Proteção Ambiental Delta do Parnaíba',
+    'Instituto Chico Mendes de Conservação da Biodiversidade – ICMBio',
+    `Data e hora da geração: ${payload.issuedAt}`,
+    `Versão da aplicação: ${payload.appVersion || '--'}`,
+    `Hash do documento (SHA-256): ${hashValue || '--'}`,
+  ];
+  signatureLines.forEach((line) => {
+    yPos = ensureTechnicalSpace(doc, yPos, 5, contentTop, contentBottom);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(line, marginLeft, yPos);
+    yPos += 5;
+  });
+
+  applyTechnicalHeaderFooter(doc, pageWidth, marginLeft, marginRight);
+  return doc;
+};
+
+const sha256Hex = async (buffer) => {
+  if (!window.crypto?.subtle) return '--';
+  const digest = await window.crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const generateTechnicalReport = async () => {
+  if (!technicalReportContext) {
+    showAlert(alertError, 'Selecione um condutor reincidente para gerar o relatório.');
+    return;
+  }
+  if (!jsPDF) {
+    showAlert(alertError, 'Biblioteca jsPDF não carregada.');
+    return;
+  }
+
+  const records = technicalReportContext.records || [];
+  if (records.length < 2) {
+    showAlert(alertError, 'É necessário possuir mais de uma ocorrência para gerar este relatório.');
+    return;
+  }
+
+  try {
+    if (technicalReportGenerateBtn) {
+      technicalReportGenerateBtn.disabled = true;
+      technicalReportGenerateBtn.textContent = 'Gerando relatório...';
+    }
+
+    const photoEntries = await prepareTechnicalPhotoEntries(records, technicalReportExtraPhotos);
+    const payload = {
+      reportNumber: (technicalReportNumberInput?.value || technicalReportContext.reportNumber || buildTechnicalReportNumber()).trim(),
+      issuedAt: (technicalReportIssuedAtInput?.value || formatDateTimeBr(new Date())).trim(),
+      records,
+      photoEntries,
+      appVersion: currentAppVersion || (document.getElementById('appVersion')?.textContent || '').replace(/^v/i, ''),
+      driver: {
+        name: (techDriverNameInput?.value || '--').trim() || '--',
+        cpf: (techDriverCpfInput?.value || '--').trim() || '--',
+        phone: (techDriverPhoneInput?.value || '--').trim() || '--',
+        municipality: (techDriverMunicipalityInput?.value || '--').trim() || '--',
+        address: (techDriverAddressInput?.value || '--').trim() || '--',
+      },
+      vehicle: {
+        plate: (techVehiclePlateInput?.value || '--').trim() || '--',
+        brand: (techVehicleBrandInput?.value || '--').trim() || '--',
+        model: (techVehicleModelInput?.value || '--').trim() || '--',
+        color: (techVehicleColorInput?.value || '--').trim() || '--',
+        year: (techVehicleYearInput?.value || '--').trim() || '--',
+        situation: (techVehicleSituationInput?.value || '--').trim() || '--',
+      },
+      texts: {
+        section6: (techTextSection6Input?.value || '--').trim() || '--',
+        section7: (techTextSection7Input?.value || '--').trim() || '--',
+        section8: (techTextSection8Input?.value || '--').trim() || '--',
+        section9: (techTextSection9Input?.value || '--').trim() || '--',
+        section10: (techTextSection10Input?.value || '--').trim() || '--',
+      },
+    };
+
+    const draftDoc = buildTechnicalReportDoc(payload, 'CALCULANDO...');
+    const draftHash = await sha256Hex(draftDoc.output('arraybuffer'));
+    const finalDoc = buildTechnicalReportDoc(payload, draftHash);
+    const safeName = normalizeText(payload.driver.name || 'condutor').replace(/[^a-z0-9]+/g, '_');
+    finalDoc.save(`Relatorio_Tecnico_Reincidencia_${safeName || 'condutor'}.pdf`);
+    showAlert(alertSuccess, 'Relatório técnico gerado com sucesso.');
+  } catch (error) {
+    showAlert(alertError, 'Falha ao gerar relatório técnico de reincidência.');
+  } finally {
+    if (technicalReportGenerateBtn) {
+      technicalReportGenerateBtn.disabled = false;
+      technicalReportGenerateBtn.textContent = 'GERAR RELATÓRIO DE REINCIDÊNCIA';
+    }
+  }
+};
 
 // ─── Relatório de Atividade ───────────────────────────────────────────────────
 let activityAgents = [];
@@ -5868,6 +6649,33 @@ clearFiltersBtn.addEventListener('click', () => {
   filterDuplicates.checked = false;
   updateDashboard();
 });
+
+if (technicalReportCloseBtn) {
+  technicalReportCloseBtn.addEventListener('click', closeTechnicalReportModal);
+}
+
+if (technicalReportModal) {
+  technicalReportModal.addEventListener('click', (event) => {
+    if (event.target === technicalReportModal) {
+      closeTechnicalReportModal();
+    }
+  });
+}
+
+if (techExtraPhotosInput) {
+  techExtraPhotosInput.addEventListener('change', async (event) => {
+    try {
+      await addTechnicalExtraPhotos(event.target.files);
+      techExtraPhotosInput.value = '';
+    } catch (_) {
+      showAlert(alertError, 'Não foi possível carregar uma ou mais fotos complementares.');
+    }
+  });
+}
+
+if (technicalReportGenerateBtn) {
+  technicalReportGenerateBtn.addEventListener('click', generateTechnicalReport);
+}
 
 if (loginInstitution) {
   loginInstitution.addEventListener('change', updateLoginAgentMode);
