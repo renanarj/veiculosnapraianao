@@ -1347,7 +1347,8 @@ const canManageRecord = (record) => {
 const getDriverKey = (record) => {
   const driverName = normalizeText(record.infractorName || '');
   const cpf = (record.infractorDoc || '').replace(/\D/g, '');
-  if (driverName && cpf) return `cpf_name:${cpf}|${driverName}`;
+  if (cpf) return `cpf:${cpf}`;
+  if (driverName) return `name:${driverName}`;
 
   const fallbackKey = [
     record?.id || '',
