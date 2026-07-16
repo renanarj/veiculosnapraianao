@@ -5210,52 +5210,63 @@ const buildOccurrenceAllFieldsRows = (record) => {
 
 const prepareTechnicalPhotoEntries = async (records, extraPhotos = []) => {
   const entries = [];
+  const extraPhotosQueue = Array.isArray(extraPhotos)
+    ? extraPhotos.filter((photo) => photo?.dataUrl && typeof photo.dataUrl === 'string')
+    : [];
 
   for (const record of records) {
     const occurrenceLabel = record.occurrenceNumber || '--';
-    let figureIndex = 1;
+    let selectedPhoto = null;
 
     if (Array.isArray(record.photos)) {
       for (const photo of record.photos) {
         if (!photo?.data || typeof photo.data !== 'string' || !photo.data.startsWith('data:image')) continue;
-        entries.push({
+        selectedPhoto = {
           dataUrl: photo.data,
-          caption: photo.name || `Foto ${figureIndex}`,
+          caption: photo.name || 'Foto da ocorrência',
           occurrenceNumber: occurrenceLabel,
           source: 'Registro da ocorrência',
-        });
-        figureIndex += 1;
+        };
+        break;
       }
     }
 
-    const links = collectRecordPhotoLinks(record);
-    for (const link of links) {
-      try {
-        const dataUrl = await fetchImageAsDataUrl(link);
-        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
-          entries.push({
-            dataUrl,
-            caption: `Foto online ${figureIndex}`,
-            occurrenceNumber: occurrenceLabel,
-            source: 'Registro da ocorrência',
-          });
-          figureIndex += 1;
-        }
-      } catch (_) {
-        // Ignora fotos indisponíveis e segue com as demais.
+    if (!selectedPhoto) {
+      const extraPhoto = extraPhotosQueue.shift();
+      if (extraPhoto) {
+        selectedPhoto = {
+          dataUrl: extraPhoto.dataUrl,
+          caption: extraPhoto.caption || extraPhoto.name || 'Foto complementar da ocorrência',
+          occurrenceNumber: occurrenceLabel,
+          source: 'Adicionada no gerador',
+        };
       }
+    }
+
+    if (!selectedPhoto) {
+      const links = collectRecordPhotoLinks(record);
+      for (const link of links) {
+        try {
+          const dataUrl = await fetchImageAsDataUrl(link);
+          if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+            selectedPhoto = {
+              dataUrl,
+              caption: 'Foto online da ocorrência',
+              occurrenceNumber: occurrenceLabel,
+              source: 'Registro da ocorrência',
+            };
+            break;
+          }
+        } catch (_) {
+          // Ignora fotos indisponíveis e tenta a próxima.
+        }
+      }
+    }
+
+    if (selectedPhoto) {
+      entries.push(selectedPhoto);
     }
   }
-
-  extraPhotos.forEach((photo, index) => {
-    if (!photo?.dataUrl) return;
-    entries.push({
-      dataUrl: photo.dataUrl,
-      caption: photo.caption || photo.name || `Foto complementar ${index + 1}`,
-      occurrenceNumber: 'COMPLEMENTAR',
-      source: 'Adicionada no gerador',
-    });
-  });
 
   return entries;
 };
