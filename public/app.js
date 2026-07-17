@@ -2761,6 +2761,19 @@ const formatWhatsApp = (value) => {
   return digits;
 };
 
+const isValidCoordinatePair = (value) => {
+  const text = (value || '').trim();
+  if (!text) return false;
+  const parts = text.split(',').map((part) => part.trim());
+  if (parts.length !== 2) return false;
+
+  const latitude = Number(parts[0]);
+  const longitude = Number(parts[1]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+
+  return latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+};
+
 const sanitizeVehiclePlate = (value) =>
   (value || '')
     .toString()
@@ -4291,6 +4304,13 @@ const validateRequiredFields = () => {
   if (!noPlateSelected && !isPlateValid) {
     document.getElementById('vehiclePlate').classList.add('invalid-field');
     missingFields.push('Placa com 7 caracteres (somente letras e números)');
+    isValid = false;
+  }
+
+  const locationValue = document.getElementById('location').value;
+  if (!isValidCoordinatePair(locationValue)) {
+    document.getElementById('location').classList.add('invalid-field');
+    missingFields.push('Local com coordenadas válidas (use Obter Coordenadas)');
     isValid = false;
   }
 
@@ -6406,6 +6426,9 @@ window.addEventListener('load', () => {
 agentSelect.addEventListener('change', updateAgentName);
 setTimeBtn.addEventListener('click', setCurrentTime);
 locationBtn.addEventListener('click', getCurrentLocation);
+if (locationInput) {
+  locationInput.readOnly = true;
+}
 if (vehicleNoPlateInput) {
   vehicleNoPlateInput.addEventListener('change', syncVehiclePlateState);
 }

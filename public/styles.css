@@ -118,7 +118,13 @@ h1 {
 }
 
 .form-group {
-  margin-bottom: 15px;
+  margin-bottom: 16px;
+}
+
+.form-group > input,
+.form-group > select,
+.form-group > textarea {
+  margin-bottom: 0;
 }
 
 label {
@@ -332,7 +338,8 @@ button:disabled {
 
 .two-columns {
   display: flex;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 0;
   flex-wrap: wrap;
 }
 
