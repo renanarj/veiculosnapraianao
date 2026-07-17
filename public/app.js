@@ -2757,6 +2757,13 @@ const formatWhatsApp = (value) => {
   return digits;
 };
 
+const sanitizeVehiclePlate = (value) =>
+  (value || '')
+    .toString()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 7);
+
 const handleLocationSuccess = (position) => {
   const { latitude, longitude } = position.coords;
   locationInput.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
@@ -4269,9 +4276,17 @@ const validateRequiredFields = () => {
 
   const plate = document.getElementById('vehiclePlate').value.trim();
   const noPlateSelected = vehicleNoPlateInput?.checked || isNoPlateValue(plate);
-  if (!noPlateSelected && plate.length !== 7) {
+  if (!noPlateSelected) {
+    const plateInput = document.getElementById('vehiclePlate');
+    const normalizedPlate = sanitizeVehiclePlate(plate);
+    if (plateInput && plateInput.value !== normalizedPlate) {
+      plateInput.value = normalizedPlate;
+    }
+  }
+  const isPlateValid = /^[A-Z0-9]{7}$/.test(document.getElementById('vehiclePlate').value);
+  if (!noPlateSelected && !isPlateValid) {
     document.getElementById('vehiclePlate').classList.add('invalid-field');
-    missingFields.push('Placa com 7 caracteres');
+    missingFields.push('Placa com 7 caracteres (somente letras e números)');
     isValid = false;
   }
 
@@ -4305,6 +4320,8 @@ const addRecord = async () => {
 
     if (vehicleNoPlateInput?.checked || isNoPlateValue(recordData.vehiclePlate)) {
       recordData.vehiclePlate = noPlateLabel;
+    } else {
+      recordData.vehiclePlate = sanitizeVehiclePlate(recordData.vehiclePlate);
     }
 
     // COPIA AS FOTOS
@@ -6395,6 +6412,12 @@ cpfInput.addEventListener('input', (event) => {
 whatsappInput.addEventListener('input', (event) => {
   event.target.value = formatWhatsApp(event.target.value);
 });
+if (vehiclePlateInput) {
+  vehiclePlateInput.addEventListener('input', (event) => {
+    if (vehicleNoPlateInput?.checked) return;
+    event.target.value = sanitizeVehiclePlate(event.target.value);
+  });
+}
 addRecordBtn.addEventListener('click', () => {
   addRecord();
 });
@@ -6468,7 +6491,7 @@ if (externalDeleteConfirmPassword) {
   });
 }
 
-['infractorName', 'vehiclePlate', 'vehicleModel', 'vehicleColor'].forEach((id) => {
+['infractorName', 'vehicleModel', 'vehicleColor'].forEach((id) => {
   const field = document.getElementById(id);
   field.addEventListener('input', () => {
     field.value = field.value.toUpperCase();

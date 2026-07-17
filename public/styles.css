@@ -1314,6 +1314,18 @@ body {
   box-shadow: 0 0 0 3px rgba(13, 158, 80, 0.12);
 }
 
+.vehicle-no-plate-line {
+  min-height: 44px;
+  margin: 0 0 10px;
+  padding: 4px 12px;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.vehicle-no-plate-line input {
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .entry-top-actions {
     justify-content: stretch;
