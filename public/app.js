@@ -23,6 +23,7 @@ const recordsList = document.getElementById('records-list');
 const alertSuccess = document.getElementById('alertSuccess');
 const alertError = document.getElementById('alertError');
 const uploadPhotoBtn = document.getElementById('uploadPhoto');
+const selectGalleryBtn = document.getElementById('selectGalleryBtn');
 const photosInput = document.getElementById('photosInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
 const entryScreen = document.getElementById('entryScreen');
@@ -1533,6 +1534,9 @@ const setSavingState = (isSaving) => {
   }
   if (uploadPhotoBtn) {
     uploadPhotoBtn.disabled = Boolean(isSaving);
+  }
+  if (selectGalleryBtn) {
+    selectGalleryBtn.disabled = Boolean(isSaving);
   }
 };
 
@@ -6426,17 +6430,16 @@ if (generateFilteredPdfBtn) {
   generateFilteredPdfBtn.addEventListener('click', generatePDF);
 }
 
-uploadPhotoBtn.addEventListener('click', () => {
-  // Mostrar opção para escolher entre câmera ou galeria
-  const choice = confirm('Deseja usar a câmera?\n\nClique em "OK" para câmera ou "Cancelar" para escolher da galeria.');
-  if (choice) {
-    // Abrir câmera fullscreen
+if (uploadPhotoBtn) {
+  uploadPhotoBtn.addEventListener('click', () => {
     openFullscreenCamera();
-  } else {
-    // Abrir galeria
+  });
+}
+if (selectGalleryBtn) {
+  selectGalleryBtn.addEventListener('click', () => {
     photosInput.click();
-  }
-});
+  });
+}
 photosInput.addEventListener('change', handlePhotoUpload);
 captureFullscreenBtn.addEventListener('click', captureFullscreenPhoto);
 cancelFullscreenCameraBtn.addEventListener('click', closeFullscreenCamera);

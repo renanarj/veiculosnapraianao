@@ -454,6 +454,19 @@ button:disabled {
   margin-top: 10px;
 }
 
+.photo-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.photo-actions button {
+  flex: 1;
+  min-width: 180px;
+  width: auto;
+  margin: 0;
+}
+
 .camera-container {
   margin-top: 15px;
   display: none;
@@ -775,6 +788,10 @@ button:disabled {
   .record-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .photo-actions button {
+    min-width: 100%;
   }
 }
 
