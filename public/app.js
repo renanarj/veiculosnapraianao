@@ -16,7 +16,6 @@ const cpfStatus = document.getElementById('cpfStatus');
 const whatsappInput = document.getElementById('whatsapp');
 const vehiclePlateInput = document.getElementById('vehiclePlate');
 const vehicleNoPlateInput = document.getElementById('vehicleNoPlate');
-const whatsappBtn = document.getElementById('sendWhatsAppBtn');
 const addRecordBtn = document.getElementById('addRecordBtn');
 const generatePdfBtn = document.getElementById('generatePdfBtn');
 const generateFilteredPdfBtn = document.getElementById('generateFilteredPdfBtn');
@@ -2001,10 +2000,6 @@ const handleLogin = async () => {
   return true;
 };
 
-const showWhatsAppUnavailable = () => {
-  showPopup('Ação não disponível nesta versão de teste.');
-};
-
 const loadRecordsFromStorage = (key = storageKey) => {
   const stored = localStorage.getItem(key);
   if (!stored) return [];
@@ -3346,15 +3341,6 @@ const submitPublicReport = async () => {
   }
 };
 
-const sendWhatsAppMessage = () => {
-  const whatsappNumber = whatsappInput.value.replace(/\D/g, '');
-  if (!whatsappNumber) return;
-  const message =
-    'COMUNICADO \nPrezado visitante, bem-vindo às praias de Luís Correia - PI. Você está dentro de uma das mais belas e importantes unidades de conservação federais brasileiras, a Área de Proteção Ambiental Delta do Parnaíba - APA Delta. Nesta praia, existem ninhos e filhotes de tartarugas marinhas de espécies ameaçadas de extinção, que vivem neste ambiente frágil, de vegetação de restinga e retenção de sedimentos que mantém as feições costeiras. Considerando a importância da biodiversidade nesta área, e da livre de circulação de pessoas, o Plano de Manejo da APA Delta do Parnaíba determinou, em seu artigo 12, a proibição da entrada, da permanência e da circulação de veículos automotores nas praias litorâneas. A desobediência deste dispositivo poderá implicar na aplicação do art. 90 do Decreto 6.514/2008, sujeitando o infrator à multa e apreensão do veículo. Neste sentido, contamos com sua colaboração para a preservação do meio ambiente e pela manutenção deste cenário de grande beleza cênica para as presentes e futuras gerações.';
-  const encodedMessage = encodeURIComponent(message);
-  window.open(`https://wa.me/55${whatsappNumber}?text=${encodedMessage}`, '_blank');
-};
-
 const sendToGoogleSheets = async (recordData, options = {}) => {
   const isPublicReport = options.mode === 'public';
   if (!scriptUrl) {
@@ -4509,7 +4495,6 @@ const editRecord = (index) => {
   document.getElementById('vehicleYear').value = record.vehicleYear || '';
   document.getElementById('location').value = record.location || '';
   document.getElementById('observations').value = 'Ocorrência editada';
-  whatsappBtn.disabled = false;
 
   photoPreviewContainer.innerHTML = '';
   photosData = [];
@@ -6409,11 +6394,6 @@ cpfInput.addEventListener('input', (event) => {
 });
 whatsappInput.addEventListener('input', (event) => {
   event.target.value = formatWhatsApp(event.target.value);
-  whatsappBtn.disabled = false;
-});
-whatsappBtn.addEventListener('click', (event) => {
-  event.preventDefault();
-  showWhatsAppUnavailable();
 });
 addRecordBtn.addEventListener('click', () => {
   addRecord();

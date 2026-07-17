@@ -274,20 +274,6 @@ button:disabled {
   overflow: hidden;
 }
 
-.whatsapp-button {
-  background-color: #25d366;
-  box-shadow: 0 6px 14px rgba(37, 211, 102, 0.25);
-}
-
-.whatsapp-button:hover {
-  background-color: #128c7e;
-}
-
-.whatsapp-icon {
-  width: 20px;
-  height: 20px;
-}
-
 .alert-success {
   background-color: #d4edda;
   color: #155724;
@@ -353,6 +339,10 @@ button:disabled {
 .two-columns > div {
   flex: 1;
   min-width: 200px;
+}
+
+.driver-contact-group {
+  width: 100%;
 }
 
 .buttons-container {
