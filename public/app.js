@@ -77,6 +77,8 @@ const loginForm = document.getElementById('loginForm');
 const loginInstitution = document.getElementById('loginInstitution');
 const loginAgent = document.getElementById('loginAgent');
 const loginAgentLabel = document.getElementById('loginAgentLabel');
+const loginEmailGroup = document.getElementById('loginEmailGroup');
+const loginEmail = document.getElementById('loginEmail');
 const loginPassword = document.getElementById('loginPassword');
 const loginError = document.getElementById('loginError');
 const loginBtn = document.getElementById('loginBtn');
@@ -121,8 +123,19 @@ const adminUserForm = document.getElementById('adminUserForm');
 const adminFormTitle = document.getElementById('adminFormTitle');
 const adminEditingUserId = document.getElementById('adminEditingUserId');
 const adminUserInstitution = document.getElementById('adminUserInstitution');
+const adminInstitutionManageSelect = document.getElementById('adminInstitutionManageSelect');
+const adminInstitutionNameInput = document.getElementById('adminInstitutionNameInput');
+const adminInstitutionCreateBtn = document.getElementById('adminInstitutionCreateBtn');
+const adminInstitutionEditBtn = document.getElementById('adminInstitutionEditBtn');
+const adminInstitutionDeleteBtn = document.getElementById('adminInstitutionDeleteBtn');
+const adminInstitutionSuccess = document.getElementById('adminInstitutionSuccess');
+const adminInstitutionError = document.getElementById('adminInstitutionError');
 const adminUserName = document.getElementById('adminUserName');
+const adminUserEmail = document.getElementById('adminUserEmail');
 const adminUserPassword = document.getElementById('adminUserPassword');
+const adminUserCpf = document.getElementById('adminUserCpf');
+const adminUserRole = document.getElementById('adminUserRole');
+const adminUserPhone = document.getElementById('adminUserPhone');
 const adminPasswordHint = document.getElementById('adminPasswordHint');
 const adminUserIsAdmin = document.getElementById('adminUserIsAdmin');
 const adminUserCanVerify = document.getElementById('adminUserCanVerify');
@@ -130,6 +143,11 @@ const adminSaveUserBtn = document.getElementById('adminSaveUserBtn');
 const adminCancelEditBtn = document.getElementById('adminCancelEditBtn');
 const adminUserSuccess = document.getElementById('adminUserSuccess');
 const adminUserError = document.getElementById('adminUserError');
+const passwordChangeModal = document.getElementById('passwordChangeModal');
+const passwordChangeNew = document.getElementById('passwordChangeNew');
+const passwordChangeConfirm = document.getElementById('passwordChangeConfirm');
+const passwordChangeSubmitBtn = document.getElementById('passwordChangeSubmitBtn');
+const passwordChangeError = document.getElementById('passwordChangeError');
 const byAgentList = document.getElementById('byAgentList');
 const byMonthList = document.getElementById('byMonthList');
 const duplicateDriversList = document.getElementById('duplicateDriversList');
@@ -215,12 +233,14 @@ const externalStatusPanelsOpen = {
   analise: false,
   analisada: false,
 };
+const adminInstitutionPanelsOpen = {};
 let cameraFacingMode = 'environment'; // 'environment' para traseira, 'user' para frontal
 let popupCloseCallback = null;
 let latestPublicProtocol = '';
 let currentAppVersion = '';
 let technicalReportContext = null;
 let technicalReportExtraPhotos = [];
+let pendingPasswordChangeUser = null;
 const usedOccurrenceNumbers = new Set();
 const noPlateLabel = 'VEÍCULO SEM PLACA';
 const recurrenceWindowMs = 2 * 60 * 60 * 1000;
@@ -228,19 +248,46 @@ const publicReportNotificationEmail = 'apa.delta@icmbio.gov.br';
 const maxEmailPdfBase64Length = 5_000_000;
 const maxRecordPdfPhotos = 8;
 const publicReportsCollection = 'records';
+const secureUsersCollection = 'userProfiles';
 const publicReportsCacheKey = 'publicReportsCache';
 const publicReportsSeenKey = 'publicReportsSeenProtocols';
 const usersCollection = 'records';
 const userRecordType = 'system_user';
+const institutionRecordType = 'system_institution';
 const usersCacheKey = 'systemUsersCache';
 const sessionUserIdKey = 'loggedUserId';
-const adminNames = new Set(['RENAN ARAUJO E SILVA', 'ADRIANO RICARDO DAMATO ROCHA DE SOUZA']);
-const institutions = {
+const authConfig = window.VNP_AUTH_CONFIG || {};
+const authMode = authConfig.mode === 'firebase_email' ? 'firebase_email' : 'legacy';
+const singleSuperadminProfile = {
+  institutionKey: authConfig.superadmin?.institutionKey || 'icmbio',
+  profileName: (authConfig.superadmin?.profileName || 'RENAN ARAUJO E SILVA')
+    .toString()
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim(),
+  email: String(authConfig.superadmin?.email || '').trim().toLowerCase(),
+};
+const defaultInstitutions = {
   icmbio: 'Instituto Chico Mendes - ICMBio',
   semarh: 'Secretaria de Meio Ambiente e Recursos Hídridos do Estado do Piauí - SEMARH',
   pmpi: 'Polícia Militar do Estado do Piauí - PMPI',
   prefeitura: 'Prefeitura Municipal de Luís Correia',
 };
+const institutions = { ...defaultInstitutions };
+const institutionsStorageKey = 'customInstitutions';
+const customInstitutions = (() => {
+  try {
+    const stored = localStorage.getItem(institutionsStorageKey);
+    if (!stored) return {};
+    const parsed = JSON.parse(stored);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+})();
+Object.entries(customInstitutions).forEach(([key, label]) => {
+  if (key && label) institutions[key] = String(label);
+});
 const icmbioAgents = [
   'ADRIANO RICARDO DAMATO ROCHA DE SOUZA',
   'ANTONIO ALVES PEREIRA FILHO',
@@ -255,6 +302,9 @@ const icmbioAgents = [
 ];
 
 const scriptUrl = 'https://script.google.com/macros/s/AKfycbx85Y2cdD-NjXKb_vJvbQHoQJd3S3BZs7gKfxgDbfc4BNkuYHPcBtIfL9zpiqqwInm8/exec';
+const userProvisioningScriptUrl = String(window.VNP_USER_PROVISIONING_URL || '').trim() || 'https://script.google.com/macros/s/AKfycbw2j6VHKATbyTtAoWpz6LTHAOQsBgWxAlYpwNJRL25_WzOOe0XV1P6kmWoxPnLgPOUX/exec';
+const userProvisioningNotificationEmail = String(window.VNP_USER_PROVISIONING_EMAIL || '').trim() || publicReportNotificationEmail;
+const userProvisioningTargetSheet = String(window.VNP_USER_PROVISIONING_SHEET || '').trim() || 'USUARIOS_CADASTRADOS';
 const firebaseConfig = {
   apiKey: 'AIzaSyAh3dTQ4EeibeakaiCE5fTUpDxplrJDFK4',
   authDomain: 'veiculosnapraianao.firebaseapp.com',
@@ -275,6 +325,7 @@ const indexedDbStoreName = 'recordsCache';
 let db = null;
 let storage = null;
 let auth = null;
+let functionsService = null;
 let firestoreReadBlocked = false;
 const dashboardCharts = {
   byDay: null,
@@ -504,6 +555,383 @@ const normalizeUpperText = (value) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const normalizeInstitutionKey = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .trim();
+
+const normalizeInstitutionLabel = (value) =>
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const generateTemporaryPassword = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let password = '';
+  for (let index = 0; index < 6; index += 1) {
+    password += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return password;
+};
+
+const persistInstitutions = () => {
+  const customEntries = Object.entries(institutions).reduce((accumulator, [key, label]) => {
+    if (key && label && !defaultInstitutions[key]) {
+      accumulator[key] = String(label);
+    }
+    return accumulator;
+  }, {});
+  localStorage.setItem(institutionsStorageKey, JSON.stringify(customEntries));
+};
+
+const getInstitutionMetaDocId = (institutionKey) => `institution_${institutionKey}`;
+
+const saveInstitutionToFirestore = async (institutionKey, institutionLabel) => {
+  if (!db || !institutionKey || !institutionLabel) {
+    throw new Error('Conexão indisponível para salvar instituição online.');
+  }
+
+  await db
+    .collection(usersCollection)
+    .doc(getInstitutionMetaDocId(institutionKey))
+    .set(
+      {
+        reportType: institutionRecordType,
+        institutionKey,
+        institutionLabel,
+        active: true,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+};
+
+const deleteInstitutionFromFirestore = async (institutionKey) => {
+  if (!db || !institutionKey) {
+    throw new Error('Conexão indisponível para excluir instituição online.');
+  }
+
+  await db.collection(usersCollection).doc(getInstitutionMetaDocId(institutionKey)).delete();
+};
+
+const loadCustomInstitutionsFromFirestore = async () => {
+  if (!db) return {};
+
+  try {
+    const snapshot = await db
+      .collection(usersCollection)
+      .where('reportType', '==', institutionRecordType)
+      .limit(500)
+      .get();
+
+    const remoteInstitutions = {};
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      if (data.active === false) return;
+      const institutionKey = normalizeInstitutionKey(data.institutionKey || doc.id.replace(/^institution_/, ''));
+      const institutionLabel = normalizeInstitutionLabel(data.institutionLabel || data.label || '');
+      if (!institutionKey || !institutionLabel || defaultInstitutions[institutionKey]) return;
+      remoteInstitutions[institutionKey] = institutionLabel;
+    });
+
+    return remoteInstitutions;
+  } catch {
+    return {};
+  }
+};
+
+const hydrateInstitutions = async () => {
+  const remoteInstitutions = await loadCustomInstitutionsFromFirestore();
+  Object.entries(remoteInstitutions).forEach(([key, label]) => {
+    if (key && label && !defaultInstitutions[key]) {
+      institutions[key] = String(label);
+    }
+  });
+
+  persistInstitutions();
+  populateInstitutionSelects();
+};
+
+const isDefaultInstitution = (institutionKey) => Boolean(defaultInstitutions[institutionKey]);
+
+const populateAdminInstitutionManager = () => {
+  if (!adminInstitutionManageSelect) return;
+  const previousValue = adminInstitutionManageSelect.value || '';
+  const options = Object.entries(institutions)
+    .map(([key, label]) => ({ key, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+  adminInstitutionManageSelect.innerHTML = '<option value="">Selecione a instituição</option>';
+  options.forEach(({ key, label }) => {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = label;
+    adminInstitutionManageSelect.appendChild(option);
+  });
+
+  if (previousValue && institutions[previousValue]) {
+    adminInstitutionManageSelect.value = previousValue;
+  } else {
+    adminInstitutionManageSelect.value = '';
+  }
+};
+
+const refreshInstitutionManagerState = () => {
+  const selectedKey = (adminInstitutionManageSelect?.value || '').trim();
+  const selectedLabel = selectedKey ? getInstitutionLabel(selectedKey) : '';
+  const customInstitutionSelected = selectedKey && !isDefaultInstitution(selectedKey);
+  const canEditInstitutions = authMode !== 'firebase_email';
+
+  if (adminInstitutionNameInput && selectedLabel) {
+    adminInstitutionNameInput.value = selectedLabel;
+  }
+
+  if (adminInstitutionCreateBtn) {
+    adminInstitutionCreateBtn.disabled = !canEditInstitutions;
+  }
+  if (adminInstitutionEditBtn) {
+    adminInstitutionEditBtn.disabled = !canEditInstitutions || !customInstitutionSelected;
+  }
+  if (adminInstitutionDeleteBtn) {
+    adminInstitutionDeleteBtn.disabled = !canEditInstitutions || !customInstitutionSelected;
+  }
+};
+
+const syncManagedUsersInstitutionLabel = async (institutionKey, institutionLabel) => {
+  managedUsers = managedUsers.map((user) =>
+    user.institutionKey === institutionKey ? { ...user, institutionLabel } : user
+  );
+  saveUsersToCache(managedUsers);
+
+  if (db && authMode !== 'firebase_email') {
+    const affectedUsers = managedUsers.filter((user) => user.institutionKey === institutionKey);
+    await Promise.all(
+      affectedUsers.map((user) =>
+        db.collection(usersCollection).doc(user.id).set(
+          {
+            institutionLabel,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        )
+      )
+    );
+  }
+};
+
+const handleCreateInstitution = async () => {
+  if (!isAdminUser()) {
+    showAlert(adminInstitutionError, 'Apenas administradores podem criar instituições.');
+    return;
+  }
+  if (!db) {
+    showAlert(adminInstitutionError, 'Sem conexão online para criar instituição.');
+    return;
+  }
+
+  const institutionLabel = normalizeInstitutionLabel(adminInstitutionNameInput?.value || '');
+  if (!institutionLabel) {
+    showAlert(adminInstitutionError, 'Informe o nome da instituição para criar.');
+    return;
+  }
+
+  const institutionKey = normalizeInstitutionKey(institutionLabel);
+  if (!institutionKey) {
+    showAlert(adminInstitutionError, 'Não foi possível gerar a chave da instituição.');
+    return;
+  }
+  if (institutions[institutionKey]) {
+    showAlert(adminInstitutionError, 'Já existe uma instituição com este nome/chave.');
+    return;
+  }
+
+  try {
+    await saveInstitutionToFirestore(institutionKey, institutionLabel);
+  } catch (error) {
+    const message = (error && error.message ? String(error.message) : '').trim();
+    showAlert(adminInstitutionError, message || 'Não foi possível salvar a instituição online.');
+    return;
+  }
+
+  institutions[institutionKey] = institutionLabel;
+  persistInstitutions();
+  populateInstitutionSelects();
+  if (adminInstitutionManageSelect) adminInstitutionManageSelect.value = institutionKey;
+  if (adminUserInstitution) adminUserInstitution.value = institutionKey;
+  refreshInstitutionManagerState();
+  renderAdminUsers();
+  showAlert(adminInstitutionSuccess, 'Instituição criada com sucesso.');
+};
+
+const handleEditInstitution = async () => {
+  if (!isAdminUser()) {
+    showAlert(adminInstitutionError, 'Apenas administradores podem editar instituições.');
+    return;
+  }
+  if (!db) {
+    showAlert(adminInstitutionError, 'Sem conexão online para editar instituição.');
+    return;
+  }
+
+  const selectedKey = (adminInstitutionManageSelect?.value || '').trim();
+  if (!selectedKey) {
+    showAlert(adminInstitutionError, 'Selecione uma instituição para editar.');
+    return;
+  }
+  if (isDefaultInstitution(selectedKey)) {
+    showAlert(adminInstitutionError, 'Instituições padrão não podem ser editadas por esta tela.');
+    return;
+  }
+
+  const nextLabel = normalizeInstitutionLabel(adminInstitutionNameInput?.value || '');
+  if (!nextLabel) {
+    showAlert(adminInstitutionError, 'Informe o novo nome da instituição.');
+    return;
+  }
+
+  try {
+    await saveInstitutionToFirestore(selectedKey, nextLabel);
+  } catch (error) {
+    const message = (error && error.message ? String(error.message) : '').trim();
+    showAlert(adminInstitutionError, message || 'Não foi possível atualizar a instituição online.');
+    return;
+  }
+
+  institutions[selectedKey] = nextLabel;
+  persistInstitutions();
+  await syncManagedUsersInstitutionLabel(selectedKey, nextLabel);
+  populateInstitutionSelects();
+  if (adminInstitutionManageSelect) adminInstitutionManageSelect.value = selectedKey;
+  refreshInstitutionManagerState();
+  renderAdminUsers();
+  showAlert(adminInstitutionSuccess, 'Instituição atualizada com sucesso.');
+};
+
+const handleDeleteInstitution = async () => {
+  if (!isAdminUser()) {
+    showAlert(adminInstitutionError, 'Apenas administradores podem excluir instituições.');
+    return;
+  }
+  if (!db) {
+    showAlert(adminInstitutionError, 'Sem conexão online para excluir instituição.');
+    return;
+  }
+
+  const selectedKey = (adminInstitutionManageSelect?.value || '').trim();
+  if (!selectedKey) {
+    showAlert(adminInstitutionError, 'Selecione uma instituição para excluir.');
+    return;
+  }
+  if (isDefaultInstitution(selectedKey)) {
+    showAlert(adminInstitutionError, 'Instituições padrão não podem ser excluídas.');
+    return;
+  }
+
+  const linkedUsers = managedUsers.filter((user) => user.institutionKey === selectedKey && user.active !== false);
+  if (linkedUsers.length > 0) {
+    showAlert(adminInstitutionError, 'Não é possível excluir instituição com usuários ativos vinculados.');
+    return;
+  }
+
+  const label = getInstitutionLabel(selectedKey) || selectedKey;
+  const confirmed = window.confirm(`Deseja excluir a instituição ${label}?`);
+  if (!confirmed) return;
+
+  try {
+    await deleteInstitutionFromFirestore(selectedKey);
+  } catch (error) {
+    const message = (error && error.message ? String(error.message) : '').trim();
+    showAlert(adminInstitutionError, message || 'Não foi possível excluir a instituição online.');
+    return;
+  }
+
+  delete institutions[selectedKey];
+  persistInstitutions();
+  populateInstitutionSelects();
+  if (adminInstitutionManageSelect) adminInstitutionManageSelect.value = '';
+  if (adminInstitutionNameInput) adminInstitutionNameInput.value = '';
+  refreshInstitutionManagerState();
+  renderAdminUsers();
+  showAlert(adminInstitutionSuccess, 'Instituição excluída com sucesso.');
+};
+
+const populateInstitutionSelects = () => {
+  const institutionOptions = Object.entries(institutions)
+    .map(([key, label]) => ({ key, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  const renderOptions = (select, { placeholderText = 'Selecione a instituição' } = {}) => {
+    if (!select) return;
+    const currentValue = select.value;
+    const previousValue = currentValue || '';
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = placeholderText;
+    select.appendChild(placeholder);
+    institutionOptions.forEach(({ key, label }) => {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+    if (previousValue) {
+      select.value = previousValue;
+    }
+  };
+
+  renderOptions(adminUserInstitution);
+  renderOptions(loginInstitution);
+  renderOptions(adminInstitutionFilter, { placeholderText: 'Todas as instituições' });
+  renderOptions(activityAgentInstitutionSelect);
+  populateAdminInstitutionManager();
+  refreshInstitutionManagerState();
+};
+
+const sendWelcomeEmail = async ({ email, fullName, institutionLabel, temporaryPassword }) => {
+  if (!email) return { ok: false, reason: 'email_missing' };
+
+  const subject = 'Bem-vindo(a) à plataforma Veículos na Praia Não';
+  const body = [
+    'Olá,',
+    '',
+    `Bem-vindo(a) à plataforma Veículos na Praia Não, ${fullName || 'usuário(a)'}!`,
+    '',
+    `Você foi cadastrado(a) na instituição ${institutionLabel || 'não informada'}.`,
+    'A sua senha provisória é:',
+    temporaryPassword,
+    '',
+    'Ao entrar na plataforma, use essa senha provisória e, em seguida, defina uma nova senha para continuar acessando o sistema.',
+    '',
+    'Atenciosamente,',
+    'Equipe Veículos na Praia Não',
+  ].join('\n');
+
+  if (functionsService) {
+    try {
+      const result = await callManagedUsersAdminFunction('sendWelcomeEmail', {
+        email,
+        fullName,
+        institutionLabel,
+        temporaryPassword,
+        subject,
+        body,
+      });
+      if (result?.ok) {
+        return { ok: true };
+      }
+    } catch {
+      // segue para fallback abaixo
+    }
+  }
+
+  return { ok: false, reason: 'backend_unavailable' };
+};
+
 const toHex = (buffer) =>
   Array.from(new Uint8Array(buffer))
     .map((value) => value.toString(16).padStart(2, '0'))
@@ -536,6 +964,43 @@ const saveUsersToCache = (users = []) => {
   localStorage.setItem(usersCacheKey, JSON.stringify(users));
 };
 
+const persistManagedUserRecord = async (userPayload) => {
+  const nextPayload = { ...userPayload };
+  if (nextPayload.password) {
+    const salt = randomSalt();
+    nextPayload.passwordSalt = salt;
+    nextPayload.passwordHash = await hashPassword(nextPayload.password, salt);
+    if (authMode !== 'firebase_email') {
+      delete nextPayload.password;
+    }
+  }
+  return nextPayload;
+};
+
+const normalizeManagedUser = (user, fallbackId = '') => {
+  if (!user) return null;
+  const normalizedName = normalizeUpperText(user.fullName || user.name || '');
+  const institutionKey = (user.institutionKey || '').trim();
+  if (!normalizedName || !institutionKey) return null;
+  const resolvedUid = user.uid || user.authUid || user.id || fallbackId || '';
+  const role = user.role === 'superadmin' ? 'superadmin' : 'agent';
+  return {
+    ...user,
+    id: resolvedUid || fallbackId || user.id || '',
+    uid: resolvedUid || '',
+    authUid: resolvedUid || '',
+    name: normalizedName,
+    fullName: normalizedName,
+    email: String(user.email || '').trim().toLowerCase(),
+    institutionKey,
+    institutionLabel: getInstitutionLabel(institutionKey),
+    role,
+    isAdmin: role === 'superadmin',
+    canVerifyExternalReports: role === 'superadmin',
+    active: user.active !== false,
+  };
+};
+
 const makeUserDocId = (institutionKey, name) =>
   `${institutionKey}_${normalizeUpperText(name).replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
 
@@ -566,13 +1031,16 @@ const createManagedUserRecord = async (
 const getDefaultUserSeeds = () => {
   const defaults = [];
   icmbioAgents.forEach((name) => {
+    const normalizedName = normalizeUpperText(name);
     const firstName = normalizeText((name || '').split(' ')[0] || '');
     defaults.push({
       name,
       institutionKey: 'icmbio',
       password: `${firstName}2026`,
-      isAdmin: adminNames.has(normalizeUpperText(name)),
-      canVerifyExternalReports: adminNames.has(normalizeUpperText(name)),
+      isAdmin: normalizedName === singleSuperadminProfile.profileName,
+      canVerifyExternalReports: normalizedName === singleSuperadminProfile.profileName,
+      role: normalizedName === singleSuperadminProfile.profileName ? 'superadmin' : 'agent',
+      email: normalizedName === singleSuperadminProfile.profileName ? singleSuperadminProfile.email : '',
     });
   });
 
@@ -583,6 +1051,8 @@ const getDefaultUserSeeds = () => {
       password: 'semarh2026',
       isAdmin: false,
       canVerifyExternalReports: false,
+      role: 'agent',
+      email: '',
     },
     {
       name: 'EQUIPE PMPI',
@@ -590,6 +1060,8 @@ const getDefaultUserSeeds = () => {
       password: 'pmpi2026',
       isAdmin: false,
       canVerifyExternalReports: false,
+      role: 'agent',
+      email: '',
     },
     {
       name: 'EQUIPE PREFEITURA',
@@ -597,6 +1069,8 @@ const getDefaultUserSeeds = () => {
       password: 'prefeitura2026',
       isAdmin: false,
       canVerifyExternalReports: false,
+      role: 'agent',
+      email: '',
     }
   );
 
@@ -640,8 +1114,38 @@ const ensureManagedUsersSeed = async (existingUsers = []) => {
   return created;
 };
 
+const loadManagedUserProfileByUid = async (uid) => {
+  if (!db || !uid) return null;
+  try {
+    const snapshot = await db.collection(secureUsersCollection).doc(uid).get();
+    if (!snapshot.exists) return null;
+    return normalizeManagedUser({ uid: snapshot.id, ...snapshot.data() }, snapshot.id);
+  } catch {
+    return null;
+  }
+};
+
 const loadManagedUsersFromFirestore = async () => {
   if (!db) return [];
+  if (authMode === 'firebase_email') {
+    const currentUid = auth?.currentUser?.uid || '';
+    if (!currentUid) return [];
+    const currentProfile = await loadManagedUserProfileByUid(currentUid);
+    if (!currentProfile || currentProfile.active === false) return [];
+    if (currentProfile.role !== 'superadmin') {
+      return [currentProfile];
+    }
+
+    try {
+      const snapshot = await db.collection(secureUsersCollection).limit(500).get();
+      return snapshot.docs
+        .map((doc) => normalizeManagedUser({ uid: doc.id, ...doc.data() }, doc.id))
+        .filter((user) => user && user.active !== false);
+    } catch {
+      return [currentProfile];
+    }
+  }
+
   try {
     const snapshot = await db
       .collection(usersCollection)
@@ -649,7 +1153,7 @@ const loadManagedUsersFromFirestore = async () => {
       .limit(500)
       .get();
     return snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .map((doc) => normalizeManagedUser({ id: doc.id, ...doc.data() }, doc.id))
       .filter((user) => user && user.name && user.institutionKey);
   } catch {
     return [];
@@ -658,28 +1162,38 @@ const loadManagedUsersFromFirestore = async () => {
 
 const initManagedUsers = async () => {
   const remoteUsers = await loadManagedUsersFromFirestore();
-  const fromRemote = remoteUsers.map((user) => ({
-    ...user,
-    name: normalizeUpperText(user.name),
-    institutionLabel: getInstitutionLabel(user.institutionKey),
-    isAdmin: Boolean(user.isAdmin),
-    canVerifyExternalReports: Boolean(user.canVerifyExternalReports),
-    active: user.active !== false,
-  }));
+  const fromRemote = remoteUsers.map((user) => normalizeManagedUser(user, user?.id)).filter(Boolean);
 
-  const preparedUsers = await ensureManagedUsersSeed(fromRemote);
+  const preparedUsers = authMode === 'firebase_email' ? fromRemote : await ensureManagedUsersSeed(fromRemote);
   managedUsers = (preparedUsers.length ? preparedUsers : loadUsersFromCache()).map((user) => {
-    const shouldBeAdmin = adminNames.has(normalizeUpperText(user.name));
-    if (!shouldBeAdmin) return user;
+    const normalizedUser = normalizeManagedUser(user, user?.id);
+    if (!normalizedUser) return null;
+    const normalizedName = normalizeUpperText(normalizedUser.name);
+    const isSingleSuperadmin =
+      normalizedName === singleSuperadminProfile.profileName &&
+      normalizedUser.institutionKey === singleSuperadminProfile.institutionKey;
+    if (!isSingleSuperadmin) {
+      return {
+        ...normalizedUser,
+        role: 'agent',
+        isAdmin: false,
+        canVerifyExternalReports: false,
+      };
+    }
     return {
-      ...user,
+      ...normalizedUser,
+      role: 'superadmin',
       isAdmin: true,
       canVerifyExternalReports: true,
     };
-  });
+  }).filter(Boolean);
 
-  if (db) {
-    const usersToEnforce = managedUsers.filter((user) => adminNames.has(normalizeUpperText(user.name)));
+  if (db && authMode !== 'firebase_email') {
+    const usersToEnforce = managedUsers.filter(
+      (user) =>
+        normalizeUpperText(user.name) === singleSuperadminProfile.profileName &&
+        user.institutionKey === singleSuperadminProfile.institutionKey
+    );
     for (const user of usersToEnforce) {
       try {
         await db
@@ -687,6 +1201,8 @@ const initManagedUsers = async () => {
           .doc(user.id)
           .set(
             {
+              email: user.email || '',
+              role: 'superadmin',
               isAdmin: true,
               canVerifyExternalReports: true,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -702,7 +1218,24 @@ const initManagedUsers = async () => {
   saveUsersToCache(managedUsers);
 };
 
+const getFirebaseLoginEmail = () => String(loginEmail?.value || '').trim().toLowerCase();
+
+const isSingleSuperadminUser = (user) =>
+  Boolean(
+    user &&
+      user.active !== false &&
+      normalizeUpperText(user.name) === singleSuperadminProfile.profileName &&
+      user.institutionKey === singleSuperadminProfile.institutionKey
+  );
+
 const getLoggedManagedUser = () => {
+  if (authMode === 'firebase_email') {
+    const currentUid = auth?.currentUser?.uid || getLoggedUserId();
+    if (currentUid) {
+      const byUid = managedUsers.find((user) => (user.uid || user.authUid || user.id) === currentUid || user.id === currentUid);
+      if (byUid) return byUid;
+    }
+  }
   const byId = managedUsers.find((user) => user.id === getLoggedUserId());
   if (byId) return byId;
   const loggedName = normalizeUpperText(getLoggedAgentName());
@@ -715,10 +1248,10 @@ const getLoggedManagedUser = () => {
   );
 };
 
-const isAdminUser = () => Boolean(getLoggedManagedUser()?.isAdmin);
+const isAdminUser = () => isSingleSuperadminUser(getLoggedManagedUser());
 const canManageExternalReports = () => {
   const user = getLoggedManagedUser();
-  return Boolean(user?.isAdmin || user?.canVerifyExternalReports);
+  return Boolean(isSingleSuperadminUser(user));
 };
 
 const verifyManagedUserPassword = async (user, plainPassword) => {
@@ -1423,11 +1956,35 @@ const initFirebase = () => {
   }
   auth = firebase.auth();
   db = firebase.firestore();
+  functionsService = firebase.functions();
   storage = firebase.storage();
+};
+
+const waitForFirebaseAuthState = async () => {
+  if (!auth) return null;
+  if (typeof auth.currentUser !== 'undefined' && auth.currentUser !== null) {
+    return auth.currentUser;
+  }
+  return new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged(
+      (user) => {
+        unsubscribe();
+        resolve(user || null);
+      },
+      () => {
+        unsubscribe();
+        resolve(null);
+      }
+    );
+  });
 };
 
 const ensureFirebaseAuth = async () => {
   if (!auth) return;
+  if (authMode === 'firebase_email') {
+    await waitForFirebaseAuthState();
+    return;
+  }
   if (auth.currentUser) return;
   try {
     await auth.signInAnonymously();
@@ -1556,14 +2113,27 @@ const updateSavingProgress = (percent, stepText) => {
 const updateLoginAgentMode = () => {
   if (!loginInstitution || !loginAgent || !loginAgentLabel) return;
   const selectedInstitution = loginInstitution.value;
+  const useEmailLogin = authMode === 'firebase_email';
+  if (loginEmailGroup) loginEmailGroup.classList.toggle('hidden', !useEmailLogin);
+  const loginAgentGroup = loginAgent.closest('.form-group');
+  if (loginAgentGroup) loginAgentGroup.classList.toggle('hidden', useEmailLogin);
   loginAgentLabel.textContent = 'Nome do Agente';
-  loginAgent.required = Boolean(selectedInstitution);
+  loginAgent.required = !useEmailLogin && Boolean(selectedInstitution);
+  if (loginEmail) {
+    loginEmail.required = useEmailLogin && Boolean(selectedInstitution);
+    if (!useEmailLogin) loginEmail.value = '';
+  }
+  if (useEmailLogin) {
+    loginAgent.value = '';
+    return;
+  }
   populateLoginAgents(selectedInstitution);
 };
 
 const populateLoginAgents = (institutionKey = loginInstitution?.value || '') => {
   if (!loginAgent) return;
   loginAgent.innerHTML = '<option value="">Selecione um agente</option>';
+  if (authMode === 'firebase_email') return;
   if (!institutionKey) return;
 
   managedUsers
@@ -1571,8 +2141,9 @@ const populateLoginAgents = (institutionKey = loginInstitution?.value || '') => 
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     .forEach((user) => {
       const loginOption = document.createElement('option');
-      loginOption.value = user.name;
-      loginOption.textContent = user.name;
+      loginOption.value = authMode === 'firebase_email' ? String(user.email || '').trim().toLowerCase() : user.name;
+      loginOption.textContent = authMode === 'firebase_email' ? `${user.name}${user.email ? ` (${user.email})` : ''}` : user.name;
+      if (!loginOption.value) return;
       loginAgent.appendChild(loginOption);
     });
 };
@@ -1583,8 +2154,29 @@ const resetAdminUserForm = () => {
   if (adminEditingUserId) adminEditingUserId.value = '';
   if (adminFormTitle) adminFormTitle.textContent = 'Cadastrar usuário';
   if (adminSaveUserBtn) adminSaveUserBtn.textContent = 'Salvar usuário';
-  if (adminPasswordHint) adminPasswordHint.textContent = 'Ao editar: deixe em branco para manter a senha atual.';
-  if (adminUserPassword) adminUserPassword.required = true;
+  if (adminPasswordHint) {
+    adminPasswordHint.textContent =
+      authMode === 'firebase_email'
+        ? 'A senha provisória será enviada por e-mail ao criar o perfil.'
+        : 'A senha provisória será enviada por e-mail ao criar o perfil.';
+  }
+  if (adminUserPassword) {
+    adminUserPassword.required = false;
+    adminUserPassword.value = '';
+  }
+  if (adminUserEmail) adminUserEmail.value = '';
+  if (adminUserCpf) adminUserCpf.value = '';
+  if (adminUserRole) adminUserRole.value = '';
+  if (adminUserPhone) adminUserPhone.value = '';
+  populateInstitutionSelects();
+  if (adminUserIsAdmin) {
+    adminUserIsAdmin.checked = false;
+    adminUserIsAdmin.disabled = true;
+  }
+  if (adminUserCanVerify) {
+    adminUserCanVerify.checked = false;
+    adminUserCanVerify.disabled = true;
+  }
   if (adminCancelEditBtn) adminCancelEditBtn.classList.add('hidden');
 };
 
@@ -1603,20 +2195,31 @@ const renderAdminUsers = () => {
     const section = document.createElement('section');
     section.className = 'admin-institution-section';
 
-    const title = document.createElement('h4');
-    title.className = 'admin-institution-title';
-    title.textContent = getInstitutionLabel(institutionKey) || institutionKey;
-    section.appendChild(title);
-
     const users = managedUsers
       .filter((user) => user.institutionKey === institutionKey && user.active !== false)
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    const panelOpen = Boolean(adminInstitutionPanelsOpen[institutionKey]);
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'admin-institution-title';
+    title.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
+    title.textContent = `${getInstitutionLabel(institutionKey) || institutionKey} (${users.length})`;
+    title.addEventListener('click', () => {
+      adminInstitutionPanelsOpen[institutionKey] = !adminInstitutionPanelsOpen[institutionKey];
+      renderAdminUsers();
+    });
+    section.appendChild(title);
+
+    const usersContainer = document.createElement('div');
+    usersContainer.className = `admin-institution-users ${panelOpen ? '' : 'hidden'}`.trim();
 
     if (!users.length) {
       const empty = document.createElement('p');
       empty.className = 'admin-empty-state';
       empty.textContent = 'Nenhum usuário cadastrado nesta instituição.';
-      section.appendChild(empty);
+      usersContainer.appendChild(empty);
+      section.appendChild(usersContainer);
       adminUsersByInstitution.appendChild(section);
       return;
     }
@@ -1626,8 +2229,8 @@ const renderAdminUsers = () => {
       item.className = 'admin-user-item';
 
       const badges = [];
-      if (user.isAdmin) badges.push('<span class="admin-user-badge">Administrador</span>');
-      if (user.canVerifyExternalReports) badges.push('<span class="admin-user-badge">Verificador</span>');
+      if (user.role === 'superadmin') badges.push('<span class="admin-user-badge">Superadmin</span>');
+      if (user.email) badges.push('<span class="admin-user-badge">Login por e-mail</span>');
 
       item.innerHTML = `
         <div class="admin-user-main">
@@ -1639,9 +2242,10 @@ const renderAdminUsers = () => {
           <button type="button" class="ghost-btn admin-user-delete" data-user-id="${user.id}">Excluir</button>
         </div>
       `;
-      section.appendChild(item);
+      usersContainer.appendChild(item);
     });
 
+    section.appendChild(usersContainer);
     adminUsersByInstitution.appendChild(section);
   });
 
@@ -1652,12 +2256,16 @@ const renderAdminUsers = () => {
       if (adminEditingUserId) adminEditingUserId.value = user.id;
       if (adminUserInstitution) adminUserInstitution.value = user.institutionKey;
       if (adminUserName) adminUserName.value = user.name;
+      if (adminUserEmail) adminUserEmail.value = user.email || '';
+      if (adminUserCpf) adminUserCpf.value = user.cpf || '';
+      if (adminUserRole) adminUserRole.value = user.roleLabel || user.role || '';
+      if (adminUserPhone) adminUserPhone.value = user.phone || '';
       if (adminUserPassword) {
         adminUserPassword.value = '';
         adminUserPassword.required = false;
       }
-      if (adminUserIsAdmin) adminUserIsAdmin.checked = Boolean(user.isAdmin);
-      if (adminUserCanVerify) adminUserCanVerify.checked = Boolean(user.canVerifyExternalReports);
+      if (adminUserIsAdmin) adminUserIsAdmin.checked = user.role === 'superadmin';
+      if (adminUserCanVerify) adminUserCanVerify.checked = user.role === 'superadmin';
       if (adminFormTitle) adminFormTitle.textContent = 'Editar usuário';
       if (adminSaveUserBtn) adminSaveUserBtn.textContent = 'Atualizar usuário';
       if (adminPasswordHint) adminPasswordHint.textContent = 'Deixe em branco para manter a senha atual.';
@@ -1672,7 +2280,9 @@ const renderAdminUsers = () => {
       const target = managedUsers.find((entry) => entry.id === userId);
       if (!target) return;
 
-      const isLastAdmin = target.isAdmin && managedUsers.filter((entry) => entry.isAdmin && entry.active !== false).length <= 1;
+      const isLastAdmin =
+        isSingleSuperadminUser(target) &&
+        managedUsers.filter((entry) => isSingleSuperadminUser(entry) && entry.active !== false).length <= 1;
       if (isLastAdmin) {
         showAlert(adminUserError, 'Não é possível excluir o último administrador do sistema.');
         return;
@@ -1682,14 +2292,17 @@ const renderAdminUsers = () => {
       if (!confirmed) return;
 
       try {
-        if (db) {
-          await db.collection(usersCollection).doc(target.id).delete();
-        }
+        await deactivateManagedUser(target);
         managedUsers = managedUsers.filter((entry) => entry.id !== target.id);
         saveUsersToCache(managedUsers);
         populateLoginAgents();
         renderAdminUsers();
-        showAlert(adminUserSuccess, `Usuário ${target.name} excluído com sucesso.`);
+        showAlert(
+          adminUserSuccess,
+          authMode === 'firebase_email'
+            ? `Usuário ${target.name} desativado com sucesso.`
+            : `Usuário ${target.name} excluído com sucesso.`
+        );
 
         if (target.id === getLoggedUserId()) {
           clearSession();
@@ -1706,6 +2319,8 @@ const updateAdminPanelAccess = () => {
   if (toggleAdminPanelBtn) {
     toggleAdminPanelBtn.classList.toggle('hidden', !canManageUsers);
   }
+  if (adminUserIsAdmin) adminUserIsAdmin.disabled = true;
+  if (adminUserCanVerify) adminUserCanVerify.disabled = true;
   if (!canManageUsers && adminPanel) {
     adminPanel.classList.add('hidden');
     if (toggleAdminPanelBtn) toggleAdminPanelBtn.textContent = 'Administração';
@@ -1714,19 +2329,66 @@ const updateAdminPanelAccess = () => {
   renderAdminUsers();
 };
 
+const callManagedUsersAdminFunction = async (functionName, payload) => {
+  if (!functionsService) {
+    throw new Error('Cloud Functions não está disponível.');
+  }
+  const callable = functionsService.httpsCallable(functionName);
+  const response = await callable(payload);
+  return response?.data || null;
+};
+
 const saveManagedUser = async (userPayload) => {
-  if (!db) return;
+  const persistedPayload = await persistManagedUserRecord(userPayload);
+  if (authMode === 'firebase_email') {
+    const isUpdate = Boolean(userPayload.uid || userPayload.authUid || userPayload.id);
+    const response = await callManagedUsersAdminFunction(
+      isUpdate ? 'updateManagedUser' : 'createManagedUser',
+      {
+        uid: persistedPayload.uid || persistedPayload.authUid || persistedPayload.id || '',
+        fullName: normalizeUpperText(persistedPayload.fullName || persistedPayload.name || ''),
+        email: String(persistedPayload.email || '').trim().toLowerCase(),
+        institutionKey: (persistedPayload.institutionKey || '').trim(),
+        password: String(persistedPayload.password || '').trim(),
+        active: persistedPayload.active !== false,
+      }
+    );
+    const normalized = normalizeManagedUser(response?.user, response?.user?.uid || response?.user?.id);
+    if (!normalized) {
+      throw new Error('Resposta inválida do backend de usuários.');
+    }
+    return normalized;
+  }
+
+  if (!db) return normalizeManagedUser(persistedPayload, persistedPayload.id || persistedPayload.uid || '');
   await db
     .collection(usersCollection)
-    .doc(userPayload.id)
+    .doc(persistedPayload.id)
     .set(
       {
-        ...userPayload,
+        ...persistedPayload,
         reportType: userRecordType,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
+
+  return normalizeManagedUser(persistedPayload, persistedPayload.id || persistedPayload.uid || '');
+};
+
+const deactivateManagedUser = async (user) => {
+  if (!user) return null;
+  if (authMode === 'firebase_email') {
+    const response = await callManagedUsersAdminFunction('deactivateManagedUser', {
+      uid: user.uid || user.authUid || user.id || '',
+    });
+    return normalizeManagedUser(response?.user, response?.user?.uid || response?.user?.id);
+  }
+
+  if (db) {
+    await db.collection(usersCollection).doc(user.id).delete();
+  }
+  return null;
 };
 
 const handleAdminUserSubmit = async () => {
@@ -1736,14 +2398,25 @@ const handleAdminUserSubmit = async () => {
   }
 
   const editingUserId = (adminEditingUserId?.value || '').trim();
-  const institutionKey = (adminUserInstitution?.value || '').trim();
+  const selectedInstitutionValue = (adminUserInstitution?.value || '').trim();
   const name = normalizeUpperText(adminUserName?.value || '');
+  const email = String(adminUserEmail?.value || '').trim().toLowerCase();
   const plainPassword = (adminUserPassword?.value || '').trim();
-  const isAdmin = Boolean(adminUserIsAdmin?.checked);
-  const canVerifyExternalReports = Boolean(adminUserCanVerify?.checked);
+  const cpf = String(adminUserCpf?.value || '').trim();
+  const role = normalizeUpperText(adminUserRole?.value || '');
+  const phone = String(adminUserPhone?.value || '').trim();
+  const isAdmin = false;
+  const canVerifyExternalReports = false;
+  const institutionKey = selectedInstitutionValue;
+  const institutionLabel = getInstitutionLabel(institutionKey) || '';
 
   if (!institutionKey || !name) {
     showAlert(adminUserError, 'Informe instituição e nome do perfil.');
+    return;
+  }
+
+  if (!email) {
+    showAlert(adminUserError, 'Informe o e-mail do usuário.');
     return;
   }
 
@@ -1759,18 +2432,69 @@ const handleAdminUserSubmit = async () => {
     return;
   }
 
-  if (!editingUserId && !plainPassword) {
-    showAlert(adminUserError, 'Informe uma senha para o novo usuário.');
+  const duplicateEmail = managedUsers.find(
+    (user) => String(user.email || '').trim().toLowerCase() === email && user.id !== editingUserId && user.active !== false
+  );
+  if (duplicateEmail) {
+    showAlert(adminUserError, 'Já existe um usuário com este e-mail.');
     return;
   }
 
   const existing = managedUsers.find((user) => user.id === editingUserId);
   let nextUser;
 
+  if (authMode === 'firebase_email') {
+    const temporaryPassword = plainPassword || generateTemporaryPassword();
+    const persistedUser = await saveManagedUser({
+      uid: existing?.uid || existing?.authUid || existing?.id || '',
+      fullName: name,
+      name,
+      email,
+      institutionKey,
+      password: temporaryPassword,
+      active: true,
+      passwordNeedsChange: true,
+      institutionLabel,
+      cpf,
+      role,
+      phone,
+    });
+
+    const withoutCurrent = managedUsers.filter((user) => user.id !== persistedUser.id);
+    managedUsers = [...withoutCurrent, persistedUser].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    saveUsersToCache(managedUsers);
+    renderAdminUsers();
+    updateExternalReportsAccess();
+    updateAdminPanelAccess();
+    resetAdminUserForm();
+    if (!existing) {
+      await sendWelcomeEmail({
+        email: persistedUser.email,
+        fullName: persistedUser.name,
+        institutionLabel: institutionLabel || getInstitutionLabel(institutionKey),
+        temporaryPassword: persistedUser.temporaryPassword || temporaryPassword || '',
+      });
+      await sendUserProvisioningToBackend({
+        fullName: persistedUser.name,
+        email: persistedUser.email,
+        institutionKey,
+        institutionLabel: institutionLabel || getInstitutionLabel(institutionKey),
+        temporaryPassword: persistedUser.temporaryPassword || temporaryPassword || '',
+        passwordNeedsChange: true,
+        role: 'agent',
+        cpf,
+        roleLabel: role,
+        phone,
+      });
+    }
+    showAlert(adminUserSuccess, existing ? 'Usuário atualizado com sucesso.' : 'Usuário criado com sucesso.');
+    return;
+  }
+
   if (existing) {
-    const wasAdmin = Boolean(existing.isAdmin);
-    const adminsCount = managedUsers.filter((user) => user.isAdmin && user.active !== false).length;
-    if (wasAdmin && !isAdmin && adminsCount <= 1) {
+    const wasAdmin = isSingleSuperadminUser(existing);
+    const adminsCount = managedUsers.filter((user) => isSingleSuperadminUser(user) && user.active !== false).length;
+    if (wasAdmin && !isSingleSuperadminUser({ name, institutionKey, active: true }) && adminsCount <= 1) {
       showAlert(adminUserError, 'Não é possível remover o papel do último administrador.');
       return;
     }
@@ -1778,10 +2502,12 @@ const handleAdminUserSubmit = async () => {
     nextUser = {
       ...existing,
       name,
+      email,
       institutionKey,
       institutionLabel: getInstitutionLabel(institutionKey),
-      isAdmin,
-      canVerifyExternalReports,
+      role: isSingleSuperadminUser({ name, institutionKey, active: true }) ? 'superadmin' : 'agent',
+      isAdmin: isSingleSuperadminUser({ name, institutionKey, active: true }),
+      canVerifyExternalReports: isSingleSuperadminUser({ name, institutionKey, active: true }),
       active: true,
     };
 
@@ -1791,10 +2517,21 @@ const handleAdminUserSubmit = async () => {
       nextUser.passwordHash = await hashPassword(plainPassword, salt);
     }
   } else {
-    nextUser = await createManagedUserRecord(name, institutionKey, plainPassword, {
+    const temporaryPassword = plainPassword || generateTemporaryPassword();
+    nextUser = await createManagedUserRecord(name, institutionKey, temporaryPassword, {
       isAdmin,
       canVerifyExternalReports,
     });
+    nextUser.cpf = cpf;
+    nextUser.roleLabel = role;
+    nextUser.phone = phone;
+    nextUser.email = email;
+    nextUser.role = isSingleSuperadminUser({ name, institutionKey, active: true }) ? 'superadmin' : 'agent';
+    nextUser.isAdmin = nextUser.role === 'superadmin';
+    nextUser.canVerifyExternalReports = nextUser.role === 'superadmin';
+    nextUser.passwordNeedsChange = true;
+    nextUser.institutionLabel = institutionLabel;
+    nextUser.temporaryPassword = temporaryPassword;
   }
 
   try {
@@ -1807,6 +2544,26 @@ const handleAdminUserSubmit = async () => {
     updateExternalReportsAccess();
     updateAdminPanelAccess();
     resetAdminUserForm();
+    if (!existing) {
+      await sendWelcomeEmail({
+        email: nextUser.email,
+        fullName: nextUser.name,
+        institutionLabel: nextUser.institutionLabel || getInstitutionLabel(institutionKey),
+        temporaryPassword: nextUser.temporaryPassword || '',
+      });
+      await sendUserProvisioningToBackend({
+        fullName: nextUser.name,
+        email: nextUser.email,
+        institutionKey,
+        institutionLabel: nextUser.institutionLabel || getInstitutionLabel(institutionKey),
+        temporaryPassword: nextUser.temporaryPassword || '',
+        passwordNeedsChange: true,
+        role: nextUser.role || 'agent',
+        cpf: nextUser.cpf || '',
+        roleLabel: nextUser.roleLabel || '',
+        phone: nextUser.phone || '',
+      });
+    }
     showAlert(adminUserSuccess, existing ? 'Usuário atualizado com sucesso.' : 'Usuário criado com sucesso.');
   } catch (error) {
     const message = (error && error.message ? String(error.message) : '').trim();
@@ -1949,7 +2706,98 @@ const showPublicReportScreen = () => {
   if (appShell) appShell.classList.add('hidden');
 };
 
+const closePasswordChangeModal = () => {
+  if (passwordChangeModal) passwordChangeModal.classList.add('hidden');
+  if (passwordChangeNew) passwordChangeNew.value = '';
+  if (passwordChangeConfirm) passwordChangeConfirm.value = '';
+  if (passwordChangeError) passwordChangeError.textContent = '';
+  pendingPasswordChangeUser = null;
+};
+
+const openPasswordChangeModal = (user) => {
+  pendingPasswordChangeUser = user;
+  if (passwordChangeModal) passwordChangeModal.classList.remove('hidden');
+  if (passwordChangeError) passwordChangeError.textContent = '';
+  if (passwordChangeNew) passwordChangeNew.focus();
+};
+
+const handlePasswordChangeSubmit = async () => {
+  const newPassword = (passwordChangeNew?.value || '').trim();
+  const confirmation = (passwordChangeConfirm?.value || '').trim();
+  if (!newPassword || !confirmation) {
+    if (passwordChangeError) showAlert(passwordChangeError, 'Informe e confirme a nova senha.');
+    return;
+  }
+  if (newPassword !== confirmation) {
+    if (passwordChangeError) showAlert(passwordChangeError, 'As senhas não conferem.');
+    return;
+  }
+  if (!/^(?=.*[A-Za-z])(?=.*\d).{6,}$/.test(newPassword)) {
+    if (passwordChangeError) showAlert(passwordChangeError, 'A senha deve ter pelo menos 6 caracteres, incluindo letras e números.');
+    return;
+  }
+  if (!pendingPasswordChangeUser) {
+    if (passwordChangeError) showAlert(passwordChangeError, 'Sessão inválida para redefinir a senha.');
+    return;
+  }
+
+  if (passwordChangeSubmitBtn) {
+    passwordChangeSubmitBtn.disabled = true;
+    passwordChangeSubmitBtn.textContent = 'Salvando...';
+  }
+
+  try {
+    let persistedUser = null;
+
+    if (authMode === 'firebase_email') {
+      if (!functionsService) {
+        throw new Error('Serviço de autenticação indisponível para atualizar senha.');
+      }
+      const result = await callManagedUsersAdminFunction('completeFirstLoginPasswordChange', {
+        password: newPassword,
+      });
+      persistedUser = normalizeManagedUser(result?.user, result?.user?.uid || result?.user?.id);
+      if (!persistedUser) {
+        throw new Error('Não foi possível atualizar o perfil após a troca de senha.');
+      }
+    } else {
+      const nextUser = {
+        ...pendingPasswordChangeUser,
+        password: newPassword,
+        passwordNeedsChange: false,
+        temporaryPassword: '',
+      };
+      const savedUser = await saveManagedUser(nextUser);
+      persistedUser = savedUser || nextUser;
+    }
+
+    pendingPasswordChangeUser = null;
+    closePasswordChangeModal();
+    const withoutCurrent = managedUsers.filter(
+      (user) => (user.id || user.uid || user.authUid) !== (persistedUser.id || persistedUser.uid || persistedUser.authUid)
+    );
+    managedUsers = [...withoutCurrent, persistedUser].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    saveUsersToCache(managedUsers);
+    setLoggedUser(persistedUser.name, persistedUser.institutionKey, persistedUser);
+    showView('dashboardView');
+    showAlert(alertSuccess, 'Senha alterada com sucesso. Você já pode continuar usando o sistema.');
+  } catch (error) {
+    const message = (error && error.message ? String(error.message) : '').trim();
+    if (passwordChangeError) {
+      showAlert(passwordChangeError, message || 'Não foi possível salvar a nova senha.');
+    }
+  } finally {
+    if (passwordChangeSubmitBtn) {
+      passwordChangeSubmitBtn.disabled = false;
+      passwordChangeSubmitBtn.textContent = 'Salvar nova senha';
+    }
+  }
+};
+
 const clearSession = () => {
+  if (authMode === 'firebase_email' && auth?.currentUser) {
+    auth.signOut().catch(() => {});
+  }
   localStorage.removeItem(sessionKey);
   localStorage.removeItem(sessionInstitutionKey);
   localStorage.removeItem(sessionUserIdKey);
@@ -1957,6 +2805,7 @@ const clearSession = () => {
   loginPassword.value = '';
   loginInstitution.value = '';
   loginAgent.value = '';
+  if (loginEmail) loginEmail.value = '';
   if (institutionInput) institutionInput.value = '';
   if (institutionDisplay) institutionDisplay.textContent = '[Instituição]';
   currentAgent.textContent = 'Agente: --';
@@ -1979,6 +2828,50 @@ const showView = (viewId) => {
 };
 
 const handleLogin = async () => {
+  if (authMode === 'firebase_email') {
+    const selectedInstitution = loginInstitution.value;
+    const selectedEmail = getFirebaseLoginEmail();
+    const password = loginPassword.value.trim();
+    loginError.style.display = 'none';
+    if (!selectedInstitution || !selectedEmail || !password) {
+      showAlert(loginError, 'Selecione a instituição, informe o e-mail e digite a senha.');
+      return false;
+    }
+
+    if (!auth) {
+      showAlert(loginError, 'Autenticação indisponível no momento.');
+      return false;
+    }
+
+    try {
+      await auth.signOut().catch(() => {});
+      const credentials = await auth.signInWithEmailAndPassword(selectedEmail, password);
+      const loggedUid = credentials?.user?.uid || '';
+      const profile = await loadManagedUserProfileByUid(loggedUid);
+      if (!profile || profile.active === false) {
+        await auth.signOut().catch(() => {});
+        showAlert(loginError, 'Seu perfil não está ativo para acesso.');
+        return false;
+      }
+      if (profile.institutionKey !== selectedInstitution) {
+        await auth.signOut().catch(() => {});
+        showAlert(loginError, 'Instituição incompatível com o perfil informado.');
+        return false;
+      }
+      await initManagedUsers();
+      localStorage.setItem(sessionUserIdKey, loggedUid);
+      if (profile.passwordNeedsChange) {
+        openPasswordChangeModal(profile);
+        return true;
+      }
+      setLoggedUser(profile.name, profile.institutionKey, profile);
+      return true;
+    } catch {
+      showAlert(loginError, 'Não foi possível autenticar. Verifique e-mail e senha.');
+      return false;
+    }
+  }
+
   const selectedInstitution = loginInstitution.value;
   const selectedAgent = getCurrentLoginAgent();
   const password = loginPassword.value.trim();
@@ -1998,6 +2891,11 @@ const handleLogin = async () => {
   if (!isValidPassword) {
     showAlert(loginError, 'Senha incorreta.');
     return false;
+  }
+
+  if (user.passwordNeedsChange) {
+    openPasswordChangeModal(user);
+    return true;
   }
 
   setLoggedUser(user.name, selectedInstitution, user);
@@ -2085,14 +2983,24 @@ const loadRecordsFromFirestore = async () => {
     firestoreReadBlocked = false;
     return snapshot.docs
       .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
-      .filter((record) => record.reportType !== 'public_denuncia' && record.reportType !== userRecordType);
+      .filter(
+        (record) =>
+          record.reportType !== 'public_denuncia' &&
+          record.reportType !== userRecordType &&
+          record.reportType !== institutionRecordType
+      );
   } catch (error) {
     try {
       const snapshot = await db.collection('records').get();
       firestoreReadBlocked = false;
       return snapshot.docs
         .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
-        .filter((record) => record.reportType !== 'public_denuncia' && record.reportType !== userRecordType);
+        .filter(
+          (record) =>
+            record.reportType !== 'public_denuncia' &&
+            record.reportType !== userRecordType &&
+            record.reportType !== institutionRecordType
+        );
     } catch (fallbackError) {
       firestoreReadBlocked = true;
       return [];
@@ -2269,6 +3177,11 @@ const buildRecordPayload = (recordData, isNew) => {
   delete payload.photos;
   delete payload.syncPending;
   delete payload.syncIssues;
+  payload.agentUid = payload.agentUid || getLoggedUserId() || auth?.currentUser?.uid || '';
+  payload.agentNameSnapshot = payload.agentNameSnapshot || payload.agent || getLoggedAgentName() || '';
+  payload.institutionKeySnapshot = payload.institutionKeySnapshot || getLoggedInstitutionKey() || '';
+  payload.institutionLabelSnapshot =
+    payload.institutionLabelSnapshot || payload.institution || getInstitutionLabel(getLoggedInstitutionKey()) || '';
   const photoUrlsCount = recordData.photoUrls?.length || 0;
   payload.photosCount = photoUrlsCount || recordData.photos?.length || 0;
   payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
@@ -3365,6 +4278,72 @@ const submitPublicReport = async () => {
   }
 };
 
+const sendUserProvisioningToBackend = async (userPayload) => {
+  if (!userPayload?.email || !userProvisioningScriptUrl) {
+    return { ok: false, skipped: true };
+  }
+
+  const payload = {
+    recordType: 'new_user_provisioning',
+    source: 'admin_panel',
+    status: 'novo',
+    targetSheet: userProvisioningTargetSheet,
+    sendEmailNotification: true,
+    notifyEmail: userProvisioningNotificationEmail,
+    notificationEmail: userProvisioningNotificationEmail,
+    destinationEmail: userProvisioningNotificationEmail,
+    notificationType: 'novo_usuario',
+    emailSubject: 'Bem-vindo(a) à plataforma Veículos na Praia Não',
+    emailBody: [
+      'Olá,',
+      '',
+      `Bem-vindo(a) à plataforma Veículos na Praia Não, ${String(userPayload.fullName || '').trim().toUpperCase() || 'usuário(a)'}!`,
+      '',
+      `Você foi cadastrado(a) na instituição ${String(userPayload.institutionLabel || userPayload.institutionKey || 'não informada').trim()}.`,
+      'A sua senha provisória é:',
+      String(userPayload.temporaryPassword || ''),
+      '',
+      'Ao entrar na plataforma, use essa senha provisória e, em seguida, defina uma nova senha para continuar acessando o sistema.',
+      '',
+      'Atenciosamente,',
+      'Equipe Veículos na Praia Não',
+    ].join('\n'),
+    fullName: String(userPayload.fullName || '').trim().toUpperCase(),
+    email: String(userPayload.email || '').trim().toLowerCase(),
+    institutionKey: String(userPayload.institutionKey || '').trim(),
+    institutionLabel: String(userPayload.institutionLabel || '').trim(),
+    temporaryPassword: String(userPayload.temporaryPassword || '').trim(),
+    passwordNeedsChange: Boolean(userPayload.passwordNeedsChange),
+    emailTo: String(userPayload.email || '').trim().toLowerCase(),
+    role: String(userPayload.role || 'agent').trim(),
+    createdAt: userPayload.createdAt || new Date().toISOString(),
+    timestamp: userPayload.createdAt || new Date().toISOString(),
+  };
+
+  try {
+    const response = await withTimeout(
+      fetch(userProvisioningScriptUrl, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      }),
+      googleSheetsTimeoutMs,
+      'Timeout ao enviar cadastro de usuário para o backend.'
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return { ok: true, payload };
+  } catch {
+    return { ok: false, payload };
+  }
+};
+
 const sendToGoogleSheets = async (recordData, options = {}) => {
   const isPublicReport = options.mode === 'public';
   if (!scriptUrl) {
@@ -4273,7 +5252,6 @@ const validateRequiredFields = () => {
     { id: 'vehiclePlate', name: 'Placa do Veículo' },
     { id: 'vehicleModel', name: 'Modelo do Veículo' },
     { id: 'vehicleColor', name: 'Cor do Veículo' },
-    { id: 'location', name: 'Local da Ocorrência' },
   ];
 
   let isValid = true;
@@ -4307,8 +5285,8 @@ const validateRequiredFields = () => {
     isValid = false;
   }
 
-  const locationValue = document.getElementById('location').value;
-  if (!isValidCoordinatePair(locationValue)) {
+  const locationValue = document.getElementById('location').value.trim();
+  if (locationValue && !isValidCoordinatePair(locationValue)) {
     document.getElementById('location').classList.add('invalid-field');
     missingFields.push('Local com coordenadas válidas (use Obter Coordenadas)');
     isValid = false;
@@ -4360,6 +5338,10 @@ const addRecord = async () => {
       const loggedInstitution = getLoggedInstitutionKey();
       recordData.institution = getInstitutionLabel(loggedInstitution);
     }
+    recordData.agentUid = getLoggedUserId() || auth?.currentUser?.uid || recordData.agentUid || '';
+    recordData.agentNameSnapshot = recordData.agent || getLoggedAgentName() || '';
+    recordData.institutionKeySnapshot = getLoggedInstitutionKey() || recordData.institutionKeySnapshot || '';
+    recordData.institutionLabelSnapshot = recordData.institution || getInstitutionLabel(getLoggedInstitutionKey()) || '';
 
     if (currentlyEditingIndex < 0) {
       const occurrence = (recordData.occurrenceNumber || '').trim();
@@ -6354,6 +7336,7 @@ window.addEventListener('load', () => {
     try {
       initFirebase();
       await ensureFirebaseAuth();
+      await hydrateInstitutions();
       await initManagedUsers();
 
       populateLoginAgents();
@@ -6527,7 +7510,7 @@ if (externalDeleteConfirmPassword) {
 const executeLogin = async (event) => {
   if (event) event.preventDefault();
   const logged = await handleLogin();
-  if (logged) {
+  if (logged && (!passwordChangeModal || passwordChangeModal.classList.contains('hidden'))) {
     showView('dashboardView');
   }
 };
@@ -6766,11 +7749,55 @@ if (adminUserName) {
   });
 }
 
+if (adminUserCpf) {
+  adminUserCpf.addEventListener('input', (event) => {
+    event.target.value = formatCPF(event.target.value);
+  });
+}
+
 if (adminUserForm) {
   adminUserForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     await handleAdminUserSubmit();
   });
+}
+
+if (adminInstitutionManageSelect) {
+  adminInstitutionManageSelect.addEventListener('change', refreshInstitutionManagerState);
+}
+
+if (adminInstitutionCreateBtn) {
+  adminInstitutionCreateBtn.addEventListener('click', handleCreateInstitution);
+}
+
+if (adminInstitutionEditBtn) {
+  adminInstitutionEditBtn.addEventListener('click', handleEditInstitution);
+}
+
+if (adminInstitutionDeleteBtn) {
+  adminInstitutionDeleteBtn.addEventListener('click', handleDeleteInstitution);
+}
+
+if (passwordChangeSubmitBtn) {
+  passwordChangeSubmitBtn.addEventListener('click', handlePasswordChangeSubmit);
+}
+
+if (passwordChangeModal) {
+  passwordChangeModal.addEventListener('click', (event) => {
+    if (event.target === passwordChangeModal) {
+      closePasswordChangeModal();
+    }
+  });
+}
+
+if (loginEmail) {
+  loginEmail.addEventListener('input', (event) => {
+    event.target.value = String(event.target.value || '').trim().toLowerCase();
+  });
+}
+
+if (adminUserInstitution) {
+  populateInstitutionSelects();
 }
 
 // ─── Event listeners – Relatório de Atividade ────────────────────────────────

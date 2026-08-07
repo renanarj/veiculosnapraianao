@@ -1088,6 +1088,63 @@ body {
   touch-action: manipulation;
 }
 
+.admin-institutions-card {
+  margin-top: 16px;
+  border: 1px solid #e2e8d6;
+  background: #f8fbf4;
+}
+
+.admin-institutions-card .filters-header {
+  margin-bottom: 12px;
+}
+
+.admin-institutions-card .admin-form-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-institutions-card .admin-form-actions button {
+  margin: 0;
+  width: 100%;
+}
+
+.admin-institution-section {
+  border: 1px solid #dfe8d5;
+  border-radius: 10px;
+  background: #ffffff;
+  margin-bottom: 10px;
+}
+
+.admin-institution-title {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #f6faf1;
+  color: #1f2937;
+  font-weight: 700;
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.admin-institution-title[aria-expanded='true'] {
+  border-bottom: 1px solid #e5ecdd;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.admin-institution-users {
+  padding: 10px 12px;
+}
+
+@media (max-width: 860px) {
+  .admin-institutions-card .admin-form-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .auth-hint {
   margin-top: 16px;
   font-size: 0.85rem;
