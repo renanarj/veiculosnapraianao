@@ -3,7 +3,8 @@
 
 set -euo pipefail
 
-ROOT_DIR="/workspaces/codespaces-blank"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR"
 cd "$ROOT_DIR"
 
 FILES=("index.html" "app.js" "styles.css")

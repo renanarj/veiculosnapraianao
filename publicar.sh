@@ -6,7 +6,8 @@ set -e
 echo "📝 Analisando mudanças..."
 echo ""
 
-cd /workspaces/codespaces-blank
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "🔎 Verificando se a base local esta atualizada com o GitHub..."
 env -u GITHUB_TOKEN git fetch origin --prune >/dev/null 2>&1
@@ -53,6 +54,7 @@ fi
 
 NOVA_VERSAO="$MAJOR.$((MINOR + 1))"
 echo "$NOVA_VERSAO" > VERSION
+echo "$NOVA_VERSAO" > public/version.txt
 
 echo "🏷️  Versão atualizada: $VERSAO_ATUAL -> $NOVA_VERSAO"
 echo ""

@@ -27,45 +27,45 @@ const selectGalleryBtn = document.getElementById('selectGalleryBtn');
 const photosInput = document.getElementById('photosInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
 const entryScreen = document.getElementById('entryScreen');
-const openPublicReportBtn = document.getElementById('openPublicReportBtn');
+const openPublicReportBtn = null;
 const openLoginBtn = document.getElementById('openLoginBtn');
-const toggleTrackProtocolBtn = document.getElementById('toggleTrackProtocolBtn');
-const trackProtocolPanel = document.getElementById('trackProtocolPanel');
-const trackProtocolInput = document.getElementById('trackProtocolInput');
-const trackProtocolBtn = document.getElementById('trackProtocolBtn');
-const trackProtocolResult = document.getElementById('trackProtocolResult');
-const publicReportScreen = document.getElementById('publicReportScreen');
-const backFromPublicReportBtn = document.getElementById('backFromPublicReportBtn');
+const toggleTrackProtocolBtn = null;
+const trackProtocolPanel = null;
+const trackProtocolInput = null;
+const trackProtocolBtn = null;
+const trackProtocolResult = null;
+const publicReportScreen = null;
+const backFromPublicReportBtn = null;
 const backFromLoginBtn = document.getElementById('backFromLoginBtn');
-const publicReportForm = document.getElementById('publicReportForm');
-const publicDateInput = document.getElementById('publicDate');
-const publicTimeInput = document.getElementById('publicTime');
-const publicLocationInput = document.getElementById('publicLocation');
-const publicGetLocationBtn = document.getElementById('publicGetLocationBtn');
-const publicLocationError = document.getElementById('publicLocationError');
-const publicVehiclePlateInput = document.getElementById('publicVehiclePlate');
-const publicVehicleModelInput = document.getElementById('publicVehicleModel');
-const publicVehicleColorInput = document.getElementById('publicVehicleColor');
-const publicVehicleYearInput = document.getElementById('publicVehicleYear');
-const publicInfractorNameInput = document.getElementById('publicInfractorName');
-const publicInfractorDocInput = document.getElementById('publicInfractorDoc');
-const publicObservationsInput = document.getElementById('publicObservations');
-const publicReporterContactInput = document.getElementById('publicReporterContact');
-const publicReportPhotosInput = document.getElementById('publicReportPhotos');
-const publicReportPhotoPreview = document.getElementById('publicReportPhotoPreview');
-const publicReportConsentInput = document.getElementById('publicReportConsent');
-const submitPublicReportBtn = document.getElementById('submitPublicReportBtn');
-const publicReportSuccess = document.getElementById('publicReportSuccess');
-const publicReportError = document.getElementById('publicReportError');
-const publicSavingOverlay = document.getElementById('publicSavingOverlay');
-const publicSavingStepText = document.getElementById('publicSavingStepText');
-const publicSavingProgressBar = document.getElementById('publicSavingProgressBar');
-const publicSavingProgressPercent = document.getElementById('publicSavingProgressPercent');
-const publicProtocolModal = document.getElementById('publicProtocolModal');
-const publicProtocolMessage = document.getElementById('publicProtocolMessage');
-const publicProtocolValue = document.getElementById('publicProtocolValue');
-const copyProtocolBtn = document.getElementById('copyProtocolBtn');
-const closeProtocolModalBtn = document.getElementById('closeProtocolModalBtn');
+const publicReportForm = null;
+const publicDateInput = null;
+const publicTimeInput = null;
+const publicLocationInput = null;
+const publicGetLocationBtn = null;
+const publicLocationError = null;
+const publicVehiclePlateInput = null;
+const publicVehicleModelInput = null;
+const publicVehicleColorInput = null;
+const publicVehicleYearInput = null;
+const publicInfractorNameInput = null;
+const publicInfractorDocInput = null;
+const publicObservationsInput = null;
+const publicReporterContactInput = null;
+const publicReportPhotosInput = null;
+const publicReportPhotoPreview = null;
+const publicReportConsentInput = null;
+const submitPublicReportBtn = null;
+const publicReportSuccess = null;
+const publicReportError = null;
+const publicSavingOverlay = null;
+const publicSavingStepText = null;
+const publicSavingProgressBar = null;
+const publicSavingProgressPercent = null;
+const publicProtocolModal = null;
+const publicProtocolMessage = null;
+const publicProtocolValue = null;
+const copyProtocolBtn = null;
+const closeProtocolModalBtn = null;
 const fullscreenCameraModal = document.getElementById('fullscreenCameraModal');
 const fullscreenCameraPreview = document.getElementById('fullscreenCameraPreview');
 const captureFullscreenBtn = document.getElementById('captureFullscreenBtn');
@@ -109,13 +109,13 @@ const applyFiltersBtn = document.getElementById('applyFiltersBtn');
 const clearFiltersBtn = document.getElementById('clearFiltersBtn');
 const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
 const toggleChartsBtn = document.getElementById('toggleChartsBtn');
-const toggleExternalReportsBtn = document.getElementById('toggleExternalReportsBtn');
+const toggleExternalReportsBtn = null;
 const toggleAdminPanelBtn = document.getElementById('toggleAdminPanelBtn');
 const dashboardFiltersPanel = document.getElementById('dashboardFiltersPanel');
 const dashboardChartsPanel = document.getElementById('dashboardChartsPanel');
-const externalReportsPanel = document.getElementById('externalReportsPanel');
-const externalReportsList = document.getElementById('externalReportsList');
-const externalReportsCount = document.getElementById('externalReportsCount');
+const externalReportsPanel = null;
+const externalReportsList = null;
+const externalReportsCount = null;
 const adminPanel = document.getElementById('adminPanel');
 const adminInstitutionFilter = document.getElementById('adminInstitutionFilter');
 const adminUsersByInstitution = document.getElementById('adminUsersByInstitution');
@@ -170,12 +170,12 @@ const deleteConfirmPassword = document.getElementById('deleteConfirmPassword');
 const deletePasswordError = document.getElementById('deletePasswordError');
 const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
 const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-const externalDeleteConfirmModal = document.getElementById('externalDeleteConfirmModal');
-const externalDeleteConfirmMessage = document.getElementById('externalDeleteConfirmMessage');
-const externalDeleteConfirmPassword = document.getElementById('externalDeleteConfirmPassword');
-const externalDeletePasswordError = document.getElementById('externalDeletePasswordError');
-const cancelExternalDeleteBtn = document.getElementById('cancelExternalDeleteBtn');
-const confirmExternalDeleteBtn = document.getElementById('confirmExternalDeleteBtn');
+const externalDeleteConfirmModal = null;
+const externalDeleteConfirmMessage = null;
+const externalDeleteConfirmPassword = null;
+const externalDeletePasswordError = null;
+const cancelExternalDeleteBtn = null;
+const confirmExternalDeleteBtn = null;
 const photoModal = document.getElementById('photoModal');
 const photoModalImage = document.getElementById('photoModalImage');
 const photoModalClose = document.getElementById('photoModalClose');
@@ -7546,14 +7546,6 @@ if (backToDashboardFromDetail) {
   backToDashboardFromDetail.addEventListener('click', () => showView('dashboardView'));
 }
 
-if (openPublicReportBtn) {
-  openPublicReportBtn.addEventListener('click', () => {
-    clearPublicReportForm();
-    showPublicReportScreen();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
-}
-
 if (openLoginBtn) {
   openLoginBtn.addEventListener('click', () => {
     showLoginScreen();
@@ -7565,47 +7557,6 @@ if (backFromLoginBtn) {
   backFromLoginBtn.addEventListener('click', () => {
     showEntryScreen();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
-}
-
-if (toggleTrackProtocolBtn) {
-  toggleTrackProtocolBtn.addEventListener('click', toggleTrackProtocolPanel);
-}
-
-if (backFromPublicReportBtn) {
-  backFromPublicReportBtn.addEventListener('click', () => {
-    showEntryScreen();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
-}
-
-if (publicReportPhotosInput) {
-  publicReportPhotosInput.addEventListener('change', handlePublicPhotoUpload);
-}
-
-if (publicGetLocationBtn) {
-  publicGetLocationBtn.addEventListener('click', handlePublicLocation);
-}
-
-if (publicInfractorDocInput) {
-  publicInfractorDocInput.addEventListener('input', (event) => {
-    event.target.value = formatCPF(event.target.value);
-  });
-}
-
-[publicVehiclePlateInput, publicVehicleModelInput, publicVehicleColorInput, publicInfractorNameInput].forEach(
-  (field) => {
-    if (!field) return;
-    field.addEventListener('input', () => {
-      field.value = field.value.toUpperCase();
-    });
-  }
-);
-
-if (publicReportForm) {
-  publicReportForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await submitPublicReport();
   });
 }
 
@@ -7648,33 +7599,6 @@ if (toggleChartsBtn && dashboardChartsPanel) {
     toggleChartsBtn.textContent = isHidden ? 'Mostrar gráficos' : 'Ocultar gráficos';
     if (!isHidden) {
       updateDashboard();
-    }
-  });
-}
-
-if (toggleExternalReportsBtn && externalReportsPanel) {
-  toggleExternalReportsBtn.addEventListener('click', async () => {
-    const isHidden = externalReportsPanel.classList.toggle('hidden');
-    if (!isHidden) {
-      await refreshExternalReports();
-      markPublicReportsAsSeen(publicReports);
-      updateExternalReportsToggleLabel();
-      externalReportsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
-    updateExternalReportsToggleLabel();
-  });
-}
-
-if (trackProtocolBtn) {
-  trackProtocolBtn.addEventListener('click', handleTrackProtocol);
-}
-
-if (trackProtocolInput) {
-  trackProtocolInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      handleTrackProtocol();
     }
   });
 }

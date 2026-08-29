@@ -1,4 +1,6 @@
-# 🚀 Veículos na Praia Não - Guia de Uso
+# Veiculos na Praia Nao - Sistema Institucional
+
+Este repositorio contem exclusivamente o sistema institucional de cadastro, analise e relatorios de ocorrencias. O modulo de denuncia publica foi separado em [denuncia-publica](denuncia-publica).
 
 ## Scripts de Sincronização
 
@@ -82,7 +84,7 @@
 ## 💾 Estrutura de Arquivos
 
 ```
-/workspaces/codespaces-blank/
+/workspaces/veiculosnapraianao/
 ├── public/
 │   ├── index.html        # Interface HTML
 │   ├── app.js            # Lógica da aplicação

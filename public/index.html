@@ -15,155 +15,13 @@
   <body>
     <div id="entryScreen" class="auth-screen">
       <div class="auth-card entry-card">
-        <div class="entry-top-actions">
-          <button type="button" id="toggleTrackProtocolBtn" class="ghost-btn entry-track-toggle-btn">Acompanhar minha denúncia</button>
-        </div>
         <div class="auth-brand">
           <img src="/logo vpn.png" alt="Logo VPN" class="logo" />
         </div>
         <h1>Veículos na Praia Não</h1>
-        <p class="auth-subtitle">Escolha como deseja acessar a plataforma.</p>
-        <div class="auth-info">
-          <div class="auth-info-item">
-            <strong>Denúncia Pública</strong>
-            <span>Qualquer cidadão pode registrar uma denúncia com campos opcionais e fotos.</span>
-          </div>
-          <div class="auth-info-item">
-            <strong>Sistema Institucional</strong>
-            <span>Acesso restrito para equipes em campo com autenticação por instituição.</span>
-          </div>
-        </div>
+        <p class="auth-subtitle">Acesso exclusivo para equipes institucionais cadastradas.</p>
         <div class="entry-actions">
-          <button type="button" id="openPublicReportBtn">Denuncie agora</button>
-          <button type="button" id="openLoginBtn" class="ghost-btn entry-secondary-btn">Entrar no sistema</button>
-        </div>
-
-        <div id="trackProtocolPanel" class="public-track-box hidden">
-          <h3>Acompanhar minha denúncia</h3>
-          <p>Digite o protocolo para consultar o status atualizado pela equipe.</p>
-          <div class="public-track-row">
-            <input type="text" id="trackProtocolInput" placeholder="Ex.: DEN-20260430-ABCDE" />
-            <button type="button" id="trackProtocolBtn" class="ghost-btn">Consultar</button>
-          </div>
-          <div id="trackProtocolResult" class="public-track-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="publicReportScreen" class="auth-screen hidden">
-      <div class="auth-card public-report-card">
-        <div class="dashboard-actions" style="margin-top: 0;">
-          <button type="button" id="backFromPublicReportBtn" class="ghost-btn">← Voltar</button>
-        </div>
-        <h1>Denuncie agora</h1>
-        <p class="auth-subtitle">Preencha somente o que souber. Sua denúncia será enviada para triagem.</p>
-
-        <form id="publicReportForm" class="auth-form" onsubmit="return false;">
-          <div class="two-columns">
-            <div class="form-group">
-              <label for="publicDate">Data observada</label>
-              <input type="date" id="publicDate" name="date" />
-            </div>
-            <div class="form-group">
-              <label for="publicTime">Hora observada</label>
-              <input type="time" id="publicTime" name="time" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="publicLocation">Local da ocorrência</label>
-            <input type="text" id="publicLocation" name="location" placeholder="Praia de Atalaia, próximo ao local &quot;x&quot;" />
-          </div>
-
-          <div class="two-columns">
-            <div class="form-group">
-              <label for="publicVehiclePlate">Placa do veículo</label>
-              <input type="text" id="publicVehiclePlate" name="vehiclePlate" placeholder="ABC1D23" maxlength="8" />
-            </div>
-            <div class="form-group">
-              <label for="publicVehicleModel">Modelo do veículo</label>
-              <input type="text" id="publicVehicleModel" name="vehicleModel" placeholder="Modelo" />
-            </div>
-          </div>
-
-          <div class="two-columns">
-            <div class="form-group">
-              <label for="publicVehicleColor">Cor</label>
-              <input type="text" id="publicVehicleColor" name="vehicleColor" placeholder="Cor" />
-            </div>
-            <div class="form-group">
-              <label for="publicVehicleYear">Ano</label>
-              <input type="text" id="publicVehicleYear" name="vehicleYear" placeholder="Ano" maxlength="4" inputmode="numeric" pattern="[0-9]*" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="publicInfractorName">Nome do condutor (se souber)</label>
-            <input type="text" id="publicInfractorName" name="infractorName" placeholder="Nome do condutor" />
-          </div>
-
-          <div class="form-group">
-            <label for="publicObservations">Relato da denúncia</label>
-            <textarea id="publicObservations" name="observations" rows="4" maxlength="1000" placeholder="Descreva o que ocorreu de forma mais detalhada possível, com todas as informações que puder, com nomes, locais, documentos, caso possuir"></textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="publicReporterContact">Contato do denunciante (opcional)</label>
-            <input type="text" id="publicReporterContact" name="reporterContact" placeholder="Telefone ou WhatsApp" />
-          </div>
-
-          <div class="form-group">
-            <label for="publicReportPhotos">Fotos (opcional)</label>
-            <input type="file" id="publicReportPhotos" accept="image/*" multiple />
-            <div id="publicReportPhotoPreview" class="public-photo-grid"></div>
-          </div>
-
-          <label class="checkbox-line public-consent-line">
-            <input type="checkbox" id="publicReportConsent" />
-            Declaro que as informações são verdadeiras e autorizo o uso para fins de fiscalização.
-          </label>
-
-          <button type="submit" id="submitPublicReportBtn">Enviar denúncia</button>
-          <div id="publicReportSuccess" class="alert-success"></div>
-          <div id="publicReportError" class="alert-error"></div>
-        </form>
-      </div>
-    </div>
-
-    <div id="publicSavingOverlay" class="saving-overlay hidden" aria-live="polite" aria-busy="true">
-      <div class="saving-card">
-        <img
-          class="saving-image"
-          alt="Carregando"
-          src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' stroke='%23588526' stroke-width='10' fill='none' stroke-linecap='round' stroke-dasharray='210' stroke-dashoffset='60'><animateTransform attributeName='transform' type='rotate' from='0 50 50' to='360 50 50' dur='1s' repeatCount='indefinite'/></circle></svg>"
-        />
-        <div class="saving-content">
-          <p id="publicSavingStepText" class="saving-step-text">Preparando envio da denúncia...</p>
-          <div class="saving-progress-row">
-            <div class="saving-progress-track" aria-hidden="true">
-              <div id="publicSavingProgressBar" class="saving-progress-bar" style="width: 0%;"></div>
-            </div>
-            <span id="publicSavingProgressPercent" class="saving-progress-percent">0%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div
-      id="publicProtocolModal"
-      class="modal-overlay hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="publicProtocolTitle"
-      aria-describedby="publicProtocolMessage"
-    >
-      <div class="modal-card">
-        <h3 id="publicProtocolTitle">Denúncia registrada</h3>
-        <p id="publicProtocolMessage">Sua denúncia foi registrada e será analisada pela equipe.</p>
-        <p id="publicProtocolValue" class="public-protocol-value"></p>
-        <div class="modal-actions public-protocol-actions">
-          <button type="button" id="copyProtocolBtn" class="ghost-btn">Copiar protocolo</button>
-          <button type="button" id="closeProtocolModalBtn">Fechar</button>
+          <button type="button" id="openLoginBtn">Entrar no sistema</button>
         </div>
       </div>
     </div>
@@ -282,7 +140,6 @@
           <div class="filters-toggle">
             <button type="button" id="toggleFiltersBtn" class="ghost-btn">Mostrar filtros</button>
             <button type="button" id="toggleChartsBtn" class="ghost-btn">Mostrar gráficos</button>
-            <button type="button" id="toggleExternalReportsBtn" class="ghost-btn hidden">Denúncias externas</button>
             <button type="button" id="toggleAdminPanelBtn" class="ghost-btn hidden">Administração</button>
           </div>
 
@@ -382,16 +239,6 @@
                   <div class="chart-wrap"><canvas id="chartRecurrenceRate"></canvas></div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div id="externalReportsPanel" class="hidden">
-            <div class="card">
-              <div class="filters-header">
-                <h3>Denúncias Externas</h3>
-                <span id="externalReportsCount" class="card-label">0 denúncias</span>
-              </div>
-              <div id="externalReportsList" class="external-reports-status-columns"></div>
             </div>
           </div>
 
@@ -928,31 +775,6 @@
         <div class="modal-actions">
           <button type="button" id="cancelDeleteBtn" class="ghost-btn">Cancelar</button>
           <button type="button" id="confirmDeleteBtn" class="delete-btn">Remover Registro</button>
-        </div>
-      </div>
-    </div>
-
-    <div
-      id="externalDeleteConfirmModal"
-      class="modal-overlay hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="externalDeleteConfirmTitle"
-    >
-      <div class="modal-card">
-        <h3 id="externalDeleteConfirmTitle">Excluir Denúncia Externa</h3>
-        <p id="externalDeleteConfirmMessage">Para excluir esta denúncia, digite sua senha:</p>
-        <input
-          type="password"
-          id="externalDeleteConfirmPassword"
-          class="modal-password-input"
-          placeholder="Digite sua senha"
-          autocomplete="off"
-        />
-        <div id="externalDeletePasswordError" class="alert-error" style="margin-top: 10px;"></div>
-        <div class="modal-actions">
-          <button type="button" id="cancelExternalDeleteBtn" class="ghost-btn">Cancelar</button>
-          <button type="button" id="confirmExternalDeleteBtn" class="delete-btn">Excluir Denúncia</button>
         </div>
       </div>
     </div>
