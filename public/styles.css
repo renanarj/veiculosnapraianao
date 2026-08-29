@@ -1852,10 +1852,11 @@ body {
 
 .record-photo-grid img {
   width: 100%;
-  height: 140px;
-  object-fit: cover;
+  height: min(46vh, 360px);
+  object-fit: contain;
   border-radius: 10px;
   border: 1px solid var(--border);
+  background: #f4f7ef;
   cursor: zoom-in;
 }
 
