@@ -5074,7 +5074,7 @@ const copyRecordLink = (recordId) => {
   );
 };
 
-const renderRecordDetail = (record) => {
+const renderRecordDetail = async (record) => {
   if (!record) return;
   recordDetailHeader.textContent = `${record.infractorName || 'Condutor'} • Nº ${
     record.occurrenceNumber || '--'
@@ -5104,13 +5104,27 @@ const renderRecordDetail = (record) => {
   });
   const uniquePhotoLinks = collectRecordPhotoLinks(record);
   if (uniquePhotoLinks.length) {
-    uniquePhotoLinks.forEach((url) => {
+    const loading = document.createElement('p');
+    loading.textContent = 'Carregando fotos da ocorrência...';
+    recordPhotos.appendChild(loading);
+
+    const remotePhotos = await Promise.allSettled(
+      uniquePhotoLinks.map(async (url) => ({ url, dataUrl: await fetchImageAsDataUrl(url) }))
+    );
+    loading.remove();
+
+    remotePhotos.forEach((result) => {
+      if (result.status !== 'fulfilled' || typeof result.value.dataUrl !== 'string') return;
       const img = document.createElement('img');
-      img.src = url;
+      img.src = result.value.dataUrl;
       img.alt = 'Foto do veículo';
-      img.addEventListener('click', () => openPhotoModal(url, img.alt));
+      img.addEventListener('click', () => openPhotoModal(result.value.dataUrl, img.alt));
       recordPhotos.appendChild(img);
     });
+
+    if (!recordPhotos.children.length) {
+      recordPhotos.innerHTML = '<p>Não foi possível carregar as fotos desta ocorrência.</p>';
+    }
   } else if (!localPhotos.length) {
     recordPhotos.innerHTML = '<p>Nenhuma foto cadastrada.</p>';
   }
@@ -5127,9 +5141,9 @@ const showRecordDetail = async (recordOrId) => {
   }
   if (record) {
     viewedRecord = record;
-    renderRecordDetail(record);
     recordDetailModal?.classList.remove('hidden');
     document.body.classList.add('modal-open');
+    await renderRecordDetail(record);
   } else {
     showAlert(alertError, 'Registro não encontrado.');
   }
