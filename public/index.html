@@ -554,21 +554,6 @@
           </div>
         </section>
 
-        <section id="recordDetailView" class="view hidden">
-          <div class="dashboard-actions">
-            <button type="button" id="backToDashboardFromDetail" class="ghost-btn">Voltar ao dashboard</button>
-          </div>
-          <div class="card">
-            <h3>Detalhes do Registro</h3>
-            <div id="recordDetailHeader" class="record-detail-header"></div>
-            <div id="recordDetailBody" class="record-detail-body"></div>
-            <div class="record-detail-actions">
-              <a id="recordPdfLink" class="ghost-btn" href="#" target="_blank" rel="noopener">Baixar PDF</a>
-            </div>
-            <div id="recordPhotos" class="record-photo-grid"></div>
-          </div>
-        </section>
-
         <section id="activityReportView" class="view hidden">
           <div class="dashboard-actions">
             <button type="button" id="backToDashboardFromActivity" class="ghost-btn">← Voltar ao dashboard</button>
@@ -789,6 +774,21 @@
       <div class="photo-modal-card">
         <button type="button" id="photoModalClose" class="photo-modal-close" aria-label="Fechar">×</button>
         <img id="photoModalImage" class="photo-modal-img" alt="Foto do veículo" />
+      </div>
+    </div>
+
+    <div id="recordDetailModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="recordDetailTitle">
+      <div class="modal-card record-detail-modal-card">
+        <div class="record-detail-modal-header">
+          <h3 id="recordDetailTitle">Visualização da Ocorrência</h3>
+          <button type="button" id="recordDetailCloseBtn" class="photo-modal-close" aria-label="Fechar">×</button>
+        </div>
+        <div id="recordDetailHeader" class="record-detail-header"></div>
+        <div id="recordDetailBody" class="record-detail-body"></div>
+        <div id="recordPhotos" class="record-photo-grid"></div>
+        <div class="record-detail-actions">
+          <button type="button" id="recordPdfDownloadBtn">Download PDF</button>
+        </div>
       </div>
     </div>
 

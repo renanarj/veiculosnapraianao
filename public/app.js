@@ -89,7 +89,6 @@ const logoutBtn = document.getElementById('logoutBtn');
 const views = document.querySelectorAll('.view');
 const openFormBtn = document.getElementById('openFormBtn');
 const backToDashboardBtn = document.getElementById('backToDashboardBtn');
-const backToDashboardFromDetail = document.getElementById('backToDashboardFromDetail');
 const statTotal = document.getElementById('statTotal');
 const statDrivers = document.getElementById('statDrivers');
 const statVehicles = document.getElementById('statVehicles');
@@ -152,10 +151,11 @@ const byAgentList = document.getElementById('byAgentList');
 const byMonthList = document.getElementById('byMonthList');
 const duplicateDriversList = document.getElementById('duplicateDriversList');
 const driversList = document.getElementById('driversList');
-const recordDetailView = document.getElementById('recordDetailView');
+const recordDetailModal = document.getElementById('recordDetailModal');
+const recordDetailCloseBtn = document.getElementById('recordDetailCloseBtn');
 const recordDetailHeader = document.getElementById('recordDetailHeader');
 const recordDetailBody = document.getElementById('recordDetailBody');
-const recordPdfLink = document.getElementById('recordPdfLink');
+const recordPdfDownloadBtn = document.getElementById('recordPdfDownloadBtn');
 const recordPhotos = document.getElementById('recordPhotos');
 const savingOverlay = document.getElementById('savingOverlay');
 const savingStepText = document.getElementById('savingStepText');
@@ -241,6 +241,7 @@ let currentAppVersion = '';
 let technicalReportContext = null;
 let technicalReportExtraPhotos = [];
 let pendingPasswordChangeUser = null;
+let viewedRecord = null;
 const usedOccurrenceNumbers = new Set();
 const noPlateLabel = 'VEÍCULO SEM PLACA';
 const recurrenceWindowMs = 2 * 60 * 60 * 1000;
@@ -4552,11 +4553,11 @@ const updateRecordsList = () => {
 
     const canManage = canManageRecord(record);
 
-    const pdfBtn = document.createElement('button');
-    pdfBtn.className = 'edit-record';
-    pdfBtn.textContent = 'PDF';
-    pdfBtn.type = 'button';
-    pdfBtn.addEventListener('click', () => generateSinglePDF(originalIndex));
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'edit-record';
+    viewBtn.textContent = 'Visualizar';
+    viewBtn.type = 'button';
+    viewBtn.addEventListener('click', () => showRecordDetail(record));
 
     if (isRecordSyncPending(record) && canManage) {
       const resendBtn = document.createElement('button');
@@ -4584,7 +4585,7 @@ const updateRecordsList = () => {
       actionsDiv.appendChild(removeBtn);
     }
 
-    actionsDiv.appendChild(pdfBtn);
+    actionsDiv.appendChild(viewBtn);
 
     recordItem.appendChild(summary);
     recordItem.appendChild(actionsDiv);
@@ -5090,15 +5091,17 @@ const renderRecordDetail = (record) => {
     <div><strong>Observações:</strong> ${record.observations || '--'}</div>
   `;
 
-  if (record.pdfUrl) {
-    recordPdfLink.href = record.pdfUrl;
-    recordPdfLink.classList.remove('hidden');
-  } else {
-    recordPdfLink.href = '#';
-    recordPdfLink.classList.add('hidden');
-  }
-
   recordPhotos.innerHTML = '';
+  const localPhotos = Array.isArray(record.photos)
+    ? record.photos.filter((photo) => typeof photo?.data === 'string' && photo.data.startsWith('data:image'))
+    : [];
+  localPhotos.forEach((photo) => {
+    const img = document.createElement('img');
+    img.src = photo.data;
+    img.alt = photo.name || 'Foto da ocorrência';
+    img.addEventListener('click', () => openPhotoModal(photo.data, img.alt));
+    recordPhotos.appendChild(img);
+  });
   const uniquePhotoLinks = collectRecordPhotoLinks(record);
   if (uniquePhotoLinks.length) {
     uniquePhotoLinks.forEach((url) => {
@@ -5108,25 +5111,54 @@ const renderRecordDetail = (record) => {
       img.addEventListener('click', () => openPhotoModal(url, img.alt));
       recordPhotos.appendChild(img);
     });
-  } else {
+  } else if (!localPhotos.length) {
     recordPhotos.innerHTML = '<p>Nenhuma foto cadastrada.</p>';
   }
 };
 
-const showRecordDetail = async (recordId) => {
-  if (!recordId) return;
-  let record = allRecords.find((item) => item.id === recordId);
-  if (!record && db) {
-    const doc = await db.collection('records').doc(recordId).get();
+const showRecordDetail = async (recordOrId) => {
+  if (!recordOrId) return;
+  let record = typeof recordOrId === 'object' ? recordOrId : allRecords.find((item) => item.id === recordOrId);
+  if (!record && db && typeof recordOrId === 'string') {
+    const doc = await db.collection('records').doc(recordOrId).get();
     if (doc.exists) {
       record = { id: doc.id, ...doc.data() };
     }
   }
   if (record) {
+    viewedRecord = record;
     renderRecordDetail(record);
-    showView('recordDetailView');
+    recordDetailModal?.classList.remove('hidden');
+    document.body.classList.add('modal-open');
   } else {
     showAlert(alertError, 'Registro não encontrado.');
+  }
+};
+
+const closeRecordDetail = () => {
+  recordDetailModal?.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  viewedRecord = null;
+};
+
+const downloadViewedRecordPdf = async () => {
+  if (!viewedRecord || !recordPdfDownloadBtn) return;
+  const originalLabel = recordPdfDownloadBtn.textContent;
+  recordPdfDownloadBtn.disabled = true;
+  recordPdfDownloadBtn.textContent = 'Gerando PDF...';
+  try {
+    const pdfBlob = await generatePDFBlob(viewedRecord);
+    const url = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Comunicado_Infracao_${viewedRecord.occurrenceNumber || 'registro'}.pdf`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    showAlert(alertError, 'Não foi possível gerar o PDF desta ocorrência.');
+  } finally {
+    recordPdfDownloadBtn.disabled = false;
+    recordPdfDownloadBtn.textContent = originalLabel;
   }
 };
 
@@ -7542,8 +7574,12 @@ if (backToDashboardBtn) {
   backToDashboardBtn.addEventListener('click', () => showView('dashboardView'));
 }
 
-if (backToDashboardFromDetail) {
-  backToDashboardFromDetail.addEventListener('click', () => showView('dashboardView'));
+if (recordDetailCloseBtn) recordDetailCloseBtn.addEventListener('click', closeRecordDetail);
+if (recordPdfDownloadBtn) recordPdfDownloadBtn.addEventListener('click', downloadViewedRecordPdf);
+if (recordDetailModal) {
+  recordDetailModal.addEventListener('click', (event) => {
+    if (event.target === recordDetailModal) closeRecordDetail();
+  });
 }
 
 if (openLoginBtn) {

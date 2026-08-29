@@ -643,6 +643,35 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.record-detail-modal-card {
+  width: min(860px, 100%);
+  max-height: min(88vh, 900px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.record-detail-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.record-detail-modal-header h3 {
+  margin: 0;
+}
+
+.record-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.record-detail-actions button {
+  width: auto;
+}
+
 .edit-record,
 .remove-record,
 .share-record {
