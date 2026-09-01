@@ -1376,7 +1376,7 @@ body {
   accent-color: var(--green);
 }
 
-.public-consent-line input {
+.checkbox-line input {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
@@ -1393,15 +1393,15 @@ body {
   transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.public-consent-line input:hover {
+.checkbox-line input:not(:disabled):hover {
   box-shadow: 0 0 0 4px rgba(13, 158, 80, 0.12), inset 0 0 0 1px rgba(13, 158, 80, 0.18);
 }
 
-.public-consent-line input:active {
+.checkbox-line input:not(:disabled):active {
   transform: scale(0.96);
 }
 
-.public-consent-line input::after {
+.checkbox-line input::after {
   content: '';
   position: absolute;
   left: 9px;
@@ -1415,13 +1415,13 @@ body {
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.public-consent-line input:checked {
+.checkbox-line input:checked {
   background: linear-gradient(180deg, #09a34f 0%, #078f45 100%);
   border-color: #078f45;
   box-shadow: 0 0 0 4px rgba(9, 163, 79, 0.2);
 }
 
-.public-consent-line input:checked::after {
+.checkbox-line input:checked::after {
   opacity: 1;
   transform: rotate(45deg) scale(1);
 }
@@ -1430,6 +1430,11 @@ body {
   border-color: #0d9e50;
   background: #eefaf3;
   box-shadow: 0 0 0 3px rgba(13, 158, 80, 0.12);
+}
+
+.checkbox-line input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .vehicle-no-plate-line {
