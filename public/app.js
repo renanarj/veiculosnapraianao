@@ -537,12 +537,14 @@ const isDriverNotFoundRecord = (record) => {
 };
 
 const getRecurrenceKeys = (record) => {
-  if (isDriverNotFoundRecord(record)) return [];
-
   const keys = [];
   const cpf = (record?.infractorDoc || '').replace(/\D/g, '');
   const name = normalizeText(record?.infractorName || '');
   const plate = normalizeText(record?.vehiclePlate || '');
+  if (isDriverNotFoundRecord(record)) {
+    if (plate && plate !== normalizedNoPlateLabel) keys.push(`plate:${plate}`);
+    return keys;
+  }
   if (cpf) keys.push(`cpf:${cpf}`);
   if (name) keys.push(`name:${name}`);
   if (plate && plate !== normalizedNoPlateLabel) keys.push(`plate:${plate}`);
@@ -602,11 +604,14 @@ const buildRecurrenceGroups = (records) => {
 const getRecurrenceGroupLabel = (group) => {
   const namedRecord = group.records.find((record) => {
     const name = normalizeText(record.infractorName);
-    return name && !name.startsWith('placa ');
+    return name && !isDriverNotFoundRecord(record) && !name.startsWith('placa ');
   });
   const sample = namedRecord || group.records[0] || {};
+  const plateKey = group.keys.find((key) => key.startsWith('plate:'));
   return {
-    name: sample.infractorName || `PLACA ${group.keys.find((key) => key.startsWith('plate:'))?.slice(6).toUpperCase() || '--'}`,
+    name: namedRecord
+      ? sample.infractorName
+      : `PLACA ${plateKey?.slice('plate:'.length).toUpperCase() || '--'}`,
     doc: sample.infractorDoc || '',
   };
 };
