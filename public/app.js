@@ -1980,12 +1980,7 @@ const handleTrackProtocol = async () => {
   }
 };
 
-const canManageRecord = (record) => {
-  const logged = normalizeText(getLoggedAgentName());
-  if (!logged) return false;
-  if (isAdminUser()) return true;
-  return normalizeText(record.agent) === logged;
-};
+const canManageRecord = () => isAdminUser();
 
 const getDriverKey = (record) => {
   if (isDriverNotFoundRecord(record)) {
