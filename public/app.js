@@ -16,6 +16,7 @@ const cpfStatus = document.getElementById('cpfStatus');
 const whatsappInput = document.getElementById('whatsapp');
 const vehiclePlateInput = document.getElementById('vehiclePlate');
 const vehicleNoPlateInput = document.getElementById('vehicleNoPlate');
+const driverNotFoundBtn = document.getElementById('driverNotFoundBtn');
 const addRecordBtn = document.getElementById('addRecordBtn');
 const generatePdfBtn = document.getElementById('generatePdfBtn');
 const generateFilteredPdfBtn = document.getElementById('generateFilteredPdfBtn');
@@ -528,6 +529,55 @@ const normalizeText = (text) =>
 const normalizedNoPlateLabel = normalizeText(noPlateLabel);
 
 const isNoPlateValue = (value) => normalizeText(value) === normalizedNoPlateLabel;
+
+const isDriverNotFoundRecord = (record) => {
+  if (record?.condutorNaoEncontrado === true) return true;
+  const name = normalizeText(record?.infractorName || '');
+  return name === 'nao encontrado' || name.startsWith('nao encontrada -');
+};
+
+const getRecurrenceKeys = (record) => {
+  if (isDriverNotFoundRecord(record)) return [];
+
+  const keys = [];
+  const cpf = (record?.infractorDoc || '').replace(/\D/g, '');
+  const name = normalizeText(record?.infractorName || '');
+  const plate = normalizeText(record?.vehiclePlate || '');
+  if (cpf) keys.push(`cpf:${cpf}`);
+  if (name) keys.push(`name:${name}`);
+  if (plate && plate !== normalizedNoPlateLabel) keys.push(`plate:${plate}`);
+  return keys;
+};
+
+const getRecordRecurrenceCount = (record, recurrenceMap) =>
+  Math.max(0, ...getRecurrenceKeys(record).map((key) => recurrenceMap[key] || 0));
+
+const setDriverNotFoundState = (enabled) => {
+  const infractorNameInput = document.getElementById('infractorName');
+  if (!infractorNameInput) return;
+
+  if (enabled) {
+    const plate = sanitizeVehiclePlate(vehiclePlateInput?.value || '');
+    if (!/^[A-Z0-9]{7}$/.test(plate)) {
+      showAlert(alertError, 'Informe uma placa válida antes de indicar condutor não encontrado.');
+      vehiclePlateInput?.focus();
+      return;
+    }
+    if (vehiclePlateInput) vehiclePlateInput.value = plate;
+    infractorNameInput.value = `NAO ENCONTRADA - ${plate}`;
+    infractorNameInput.readOnly = true;
+    if (cpfInput) cpfInput.value = '';
+    if (whatsappInput) whatsappInput.value = '';
+    infractorNameInput.dataset.notFound = 'true';
+    if (driverNotFoundBtn) driverNotFoundBtn.textContent = 'Informar nome';
+    return;
+  }
+
+  infractorNameInput.readOnly = false;
+  infractorNameInput.value = '';
+  delete infractorNameInput.dataset.notFound;
+  if (driverNotFoundBtn) driverNotFoundBtn.textContent = 'Não encontrado';
+};
 
 const syncVehiclePlateState = () => {
   if (!vehiclePlateInput || !vehicleNoPlateInput) return;
@@ -1875,6 +1925,9 @@ const canManageRecord = (record) => {
 };
 
 const getDriverKey = (record) => {
+  if (isDriverNotFoundRecord(record)) {
+    return `no_recurrence:${record?.id || record?.occurrenceNumber || 'sem_identificacao'}`;
+  }
   const driverName = normalizeText(record.infractorName || '');
   const cpf = (record.infractorDoc || '').replace(/\D/g, '');
   if (cpf) return `cpf:${cpf}`;
@@ -4534,7 +4587,7 @@ const updateRecordsList = () => {
 
     const summary = document.createElement('div');
     summary.className = 'record-info';
-    const duplicateCount = duplicateMap[getDriverKey(record)] || 0;
+    const duplicateCount = getRecordRecurrenceCount(record, duplicateMap);
     const duplicateBadge =
       duplicateCount > 1
         ? `<span class="badge">${duplicateCount} ocorrências</span>`
@@ -4714,9 +4767,10 @@ const resendPendingRecord = async (index) => {
 const buildDuplicateMap = (records) => {
   const grouped = {};
   records.forEach((record) => {
-    const key = getDriverKey(record);
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(record);
+    getRecurrenceKeys(record).forEach((key) => {
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(record);
+    });
   });
 
   const map = {};
@@ -4767,7 +4821,7 @@ const applyFilters = (records) => {
   }
   if (filterDuplicates.checked) {
     const dupMap = buildDuplicateMap(allRecords);
-    filtered = filtered.filter((record) => (dupMap[getDriverKey(record)] || 0) > 1);
+    filtered = filtered.filter((record) => getRecordRecurrenceCount(record, dupMap) > 1);
   }
   return filtered;
 };
@@ -5038,7 +5092,10 @@ const renderDriversList = (records) => {
     const doc = driver.doc ? driver.doc : '--';
     const whatsapp = driver.whatsapp ? driver.whatsapp : '--';
     const lastDate = driver.lastDate ? driver.lastDate : '--';
-    const badge = (recurrenceMap[driver.key] || 0) > 1 ? ' <span class="badge">Reincidente</span>' : '';
+    const badge = getRecordRecurrenceCount(
+      records.find((record) => getDriverKey(record) === driver.key),
+      recurrenceMap
+    ) > 1 ? ' <span class="badge">Reincidente</span>' : '';
     card.innerHTML = `
       <h4>${driver.name}${badge}</h4>
       <div class="driver-meta">
@@ -5229,8 +5286,10 @@ const updateDashboard = () => {
   const duplicateDrivers = Object.entries(duplicateMap)
     .filter(([, count]) => count > 1)
     .map(([key, value]) => {
-      const sample = filtered.find((record) => getDriverKey(record) === key);
-      const name = sample?.infractorName || 'Condutor';
+      const sample = filtered.find((record) => getRecurrenceKeys(record).includes(key));
+      const name = key.startsWith('plate:')
+        ? `PLACA ${key.slice('plate:'.length).toUpperCase()}`
+        : sample?.infractorName || 'Condutor';
       return {
         driverKey: key,
         name,
@@ -5248,6 +5307,7 @@ const updateDashboard = () => {
 
 const clearFormAfterRecord = () => {
   document.getElementById('fiscalizationForm').reset();
+  setDriverNotFoundState(false);
   photoPreviewContainer.innerHTML = '';
   photosData = [];
   locationError.textContent = '';
@@ -5272,6 +5332,7 @@ const clearFormAfterRecord = () => {
 
 const clearForm = () => {
   document.getElementById('fiscalizationForm').reset();
+  setDriverNotFoundState(false);
   photoPreviewContainer.innerHTML = '';
   photosData = [];
   locationError.textContent = '';
@@ -5363,6 +5424,9 @@ const addRecord = async () => {
     formData.forEach((value, key) => {
       recordData[key] = value;
     });
+    const infractorNameInput = document.getElementById('infractorName');
+    recordData.condutorNaoEncontrado =
+      infractorNameInput?.dataset.notFound === 'true' || isDriverNotFoundRecord(recordData);
     recordData.syncPending = false;
     recordData.syncIssues = [];
 
@@ -5552,6 +5616,11 @@ const editRecord = (index) => {
   document.getElementById('date').value = record.date || '';
   document.getElementById('time').value = record.time || '';
   document.getElementById('infractorName').value = record.infractorName || '';
+  document.getElementById('infractorName').dataset.notFound = isDriverNotFoundRecord(record) ? 'true' : '';
+  document.getElementById('infractorName').readOnly = isDriverNotFoundRecord(record);
+  if (driverNotFoundBtn) {
+    driverNotFoundBtn.textContent = isDriverNotFoundRecord(record) ? 'Informar nome' : 'Não encontrado';
+  }
   document.getElementById('infractorDoc').value = record.infractorDoc || '';
   document.getElementById('whatsapp').value = record.whatsapp || '';
   document.getElementById('vehiclePlate').value = record.vehiclePlate || '';
@@ -5559,6 +5628,10 @@ const editRecord = (index) => {
     vehicleNoPlateInput.checked = isNoPlateValue(record.vehiclePlate);
   }
   syncVehiclePlateState();
+      const infractorNameInput = document.getElementById('infractorName');
+      if (infractorNameInput?.dataset.notFound === 'true' && /^[A-Z0-9]{7}$/.test(event.target.value)) {
+        infractorNameInput.value = `NAO ENCONTRADA - ${event.target.value}`;
+      }
   document.getElementById('vehicleModel').value = record.vehicleModel || '';
   document.getElementById('vehicleColor').value = record.vehicleColor || '';
   document.getElementById('vehicleYear').value = record.vehicleYear || '';
@@ -6091,7 +6164,7 @@ const extractCoordinates = (locationText) => {
 
 const getDriverRecordsByKey = (driverKey) =>
   allRecords
-    .filter((record) => getDriverKey(record) === driverKey)
+    .filter((record) => getRecurrenceKeys(record).includes(driverKey))
     .sort((a, b) => {
       const aTs = getRecordTimestamp(a) ?? getRecordCreatedAtTimestamp(a) ?? 0;
       const bTs = getRecordTimestamp(b) ?? getRecordCreatedAtTimestamp(b) ?? 0;
@@ -7473,10 +7546,17 @@ if (vehiclePlateInput) {
     if (vehicleNoPlateInput?.checked) return;
     event.target.value = sanitizeVehiclePlate(event.target.value);
   });
+  if (driverNotFoundBtn) {
+    driverNotFoundBtn.addEventListener('click', () => {
+      const infractorNameInput = document.getElementById('infractorName');
+      setDriverNotFoundState(infractorNameInput?.dataset.notFound !== 'true');
+    });
+  }
 }
 addRecordBtn.addEventListener('click', () => {
   addRecord();
 });
+      if (id === 'infractorName') delete field.dataset.notFound;
 generatePdfBtn.addEventListener('click', generatePDF);
 if (generateFilteredPdfBtn) {
   generateFilteredPdfBtn.addEventListener('click', generatePDF);

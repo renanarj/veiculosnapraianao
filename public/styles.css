@@ -127,6 +127,27 @@ h1 {
   margin-bottom: 0;
 }
 
+.field-label-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.field-label-action label {
+  margin-bottom: 0;
+}
+
+.field-label-action .ghost-btn {
+  width: auto;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 label {
   display: block;
   margin-bottom: 8px;
