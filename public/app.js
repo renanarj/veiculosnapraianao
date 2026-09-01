@@ -617,24 +617,22 @@ const setDriverNotFoundState = (enabled) => {
 
   if (enabled) {
     const plate = sanitizeVehiclePlate(vehiclePlateInput?.value || '');
-    if (!/^[A-Z0-9]{7}$/.test(plate)) {
-      showAlert(alertError, 'Informe uma placa válida antes de indicar condutor não encontrado.');
-      if (driverNotFoundInput) driverNotFoundInput.checked = false;
-      vehiclePlateInput?.focus();
-      return;
-    }
-    if (vehiclePlateInput) vehiclePlateInput.value = plate;
-    infractorNameInput.value = `NAO ENCONTRADA - ${plate}`;
+    const hasValidPlate = /^[A-Z0-9]{7}$/.test(plate);
+    if (hasValidPlate && vehiclePlateInput) vehiclePlateInput.value = plate;
+    infractorNameInput.value = hasValidPlate ? `NAO ENCONTRADA - ${plate}` : '';
+    infractorNameInput.placeholder = hasValidPlate ? 'Nome completo' : 'Informe a placa do veículo';
     infractorNameInput.readOnly = true;
     if (cpfInput) cpfInput.value = '';
     if (whatsappInput) whatsappInput.value = '';
     infractorNameInput.dataset.notFound = 'true';
     if (driverNotFoundInput) driverNotFoundInput.checked = true;
+    if (!hasValidPlate) vehiclePlateInput?.focus();
     return;
   }
 
   infractorNameInput.readOnly = false;
   infractorNameInput.value = '';
+  infractorNameInput.placeholder = 'Nome completo';
   delete infractorNameInput.dataset.notFound;
   if (driverNotFoundInput) driverNotFoundInput.checked = false;
 };
@@ -5672,10 +5670,6 @@ const editRecord = (index) => {
     vehicleNoPlateInput.checked = isNoPlateValue(record.vehiclePlate);
   }
   syncVehiclePlateState();
-      const infractorNameInput = document.getElementById('infractorName');
-      if (infractorNameInput?.dataset.notFound === 'true' && /^[A-Z0-9]{7}$/.test(event.target.value)) {
-        infractorNameInput.value = `NAO ENCONTRADA - ${event.target.value}`;
-      }
   document.getElementById('vehicleModel').value = record.vehicleModel || '';
   document.getElementById('vehicleColor').value = record.vehicleColor || '';
   document.getElementById('vehicleYear').value = record.vehicleYear || '';
@@ -7588,6 +7582,11 @@ if (vehiclePlateInput) {
   vehiclePlateInput.addEventListener('input', (event) => {
     if (vehicleNoPlateInput?.checked) return;
     event.target.value = sanitizeVehiclePlate(event.target.value);
+    const infractorNameInput = document.getElementById('infractorName');
+    if (infractorNameInput?.dataset.notFound === 'true' && /^[A-Z0-9]{7}$/.test(event.target.value)) {
+      infractorNameInput.value = `NAO ENCONTRADA - ${event.target.value}`;
+      infractorNameInput.placeholder = 'Nome completo';
+    }
   });
 }
 if (driverNotFoundInput) {
