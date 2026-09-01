@@ -16,7 +16,7 @@ const cpfStatus = document.getElementById('cpfStatus');
 const whatsappInput = document.getElementById('whatsapp');
 const vehiclePlateInput = document.getElementById('vehiclePlate');
 const vehicleNoPlateInput = document.getElementById('vehicleNoPlate');
-const driverNotFoundBtn = document.getElementById('driverNotFoundBtn');
+const driverNotFoundInput = document.getElementById('driverNotFound');
 const addRecordBtn = document.getElementById('addRecordBtn');
 const generatePdfBtn = document.getElementById('generatePdfBtn');
 const generateFilteredPdfBtn = document.getElementById('generateFilteredPdfBtn');
@@ -619,6 +619,7 @@ const setDriverNotFoundState = (enabled) => {
     const plate = sanitizeVehiclePlate(vehiclePlateInput?.value || '');
     if (!/^[A-Z0-9]{7}$/.test(plate)) {
       showAlert(alertError, 'Informe uma placa válida antes de indicar condutor não encontrado.');
+      if (driverNotFoundInput) driverNotFoundInput.checked = false;
       vehiclePlateInput?.focus();
       return;
     }
@@ -628,14 +629,14 @@ const setDriverNotFoundState = (enabled) => {
     if (cpfInput) cpfInput.value = '';
     if (whatsappInput) whatsappInput.value = '';
     infractorNameInput.dataset.notFound = 'true';
-    if (driverNotFoundBtn) driverNotFoundBtn.textContent = 'Informar nome';
+    if (driverNotFoundInput) driverNotFoundInput.checked = true;
     return;
   }
 
   infractorNameInput.readOnly = false;
   infractorNameInput.value = '';
   delete infractorNameInput.dataset.notFound;
-  if (driverNotFoundBtn) driverNotFoundBtn.textContent = 'Não encontrado';
+  if (driverNotFoundInput) driverNotFoundInput.checked = false;
 };
 
 const syncVehiclePlateState = () => {
@@ -5663,9 +5664,7 @@ const editRecord = (index) => {
   document.getElementById('infractorName').value = record.infractorName || '';
   document.getElementById('infractorName').dataset.notFound = isDriverNotFoundRecord(record) ? 'true' : '';
   document.getElementById('infractorName').readOnly = isDriverNotFoundRecord(record);
-  if (driverNotFoundBtn) {
-    driverNotFoundBtn.textContent = isDriverNotFoundRecord(record) ? 'Informar nome' : 'Não encontrado';
-  }
+  if (driverNotFoundInput) driverNotFoundInput.checked = isDriverNotFoundRecord(record);
   document.getElementById('infractorDoc').value = record.infractorDoc || '';
   document.getElementById('whatsapp').value = record.whatsapp || '';
   document.getElementById('vehiclePlate').value = record.vehiclePlate || '';
@@ -7590,12 +7589,11 @@ if (vehiclePlateInput) {
     if (vehicleNoPlateInput?.checked) return;
     event.target.value = sanitizeVehiclePlate(event.target.value);
   });
-  if (driverNotFoundBtn) {
-    driverNotFoundBtn.addEventListener('click', () => {
-      const infractorNameInput = document.getElementById('infractorName');
-      setDriverNotFoundState(infractorNameInput?.dataset.notFound !== 'true');
-    });
-  }
+}
+if (driverNotFoundInput) {
+  driverNotFoundInput.addEventListener('change', () => {
+    setDriverNotFoundState(driverNotFoundInput.checked);
+  });
 }
 addRecordBtn.addEventListener('click', () => {
   addRecord();

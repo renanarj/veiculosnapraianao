@@ -139,13 +139,31 @@ h1 {
   margin-bottom: 0;
 }
 
-.field-label-action .ghost-btn {
+.driver-not-found-line {
   width: auto;
   min-height: 36px;
   margin: 0;
-  padding: 6px 10px;
+  padding: 3px 8px;
   font-size: 0.82rem;
   white-space: nowrap;
+}
+
+.driver-not-found-line input {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  margin: 0;
+  border-width: 2px;
+  border-radius: 7px;
+  flex-basis: 26px;
+}
+
+.driver-not-found-line input::after {
+  left: 7px;
+  top: 1px;
+  width: 7px;
+  height: 14px;
+  border-width: 0 3px 3px 0;
 }
 
 label {
