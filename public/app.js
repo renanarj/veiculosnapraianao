@@ -1283,22 +1283,15 @@ const initManagedUsers = async () => {
     const normalizedUser = normalizeManagedUser(user, user?.id);
     if (!normalizedUser) return null;
     const normalizedName = normalizeUpperText(normalizedUser.name);
-    const isSingleSuperadmin =
+    const isRootSuperadmin =
       normalizedName === singleSuperadminProfile.profileName &&
       normalizedUser.institutionKey === singleSuperadminProfile.institutionKey;
-    if (!isSingleSuperadmin) {
-      return {
-        ...normalizedUser,
-        role: 'agent',
-        isAdmin: false,
-        canVerifyExternalReports: false,
-      };
-    }
+    const isAdmin = isRootSuperadmin || normalizedUser.role === 'superadmin' || normalizedUser.isAdmin;
     return {
       ...normalizedUser,
-      role: 'superadmin',
-      isAdmin: true,
-      canVerifyExternalReports: true,
+      role: isAdmin ? 'superadmin' : 'agent',
+      isAdmin,
+      canVerifyExternalReports: isAdmin,
     };
   }).filter(Boolean);
 
@@ -1362,10 +1355,14 @@ const getLoggedManagedUser = () => {
   );
 };
 
-const isAdminUser = () => isSingleSuperadminUser(getLoggedManagedUser());
+const isAdminUser = () => {
+  const user = getLoggedManagedUser();
+  return Boolean(user && user.active !== false && user.role === 'superadmin');
+};
+const canGrantAdminRole = () => isSingleSuperadminUser(getLoggedManagedUser());
 const canManageExternalReports = () => {
   const user = getLoggedManagedUser();
-  return Boolean(isSingleSuperadminUser(user));
+  return Boolean(user && user.active !== false && user.role === 'superadmin');
 };
 
 const verifyManagedUserPassword = async (user, plainPassword) => {
@@ -2283,11 +2280,11 @@ const resetAdminUserForm = () => {
   populateInstitutionSelects();
   if (adminUserIsAdmin) {
     adminUserIsAdmin.checked = false;
-    adminUserIsAdmin.disabled = true;
+    adminUserIsAdmin.disabled = !canGrantAdminRole();
   }
   if (adminUserCanVerify) {
     adminUserCanVerify.checked = false;
-    adminUserCanVerify.disabled = true;
+    adminUserCanVerify.disabled = !canGrantAdminRole();
   }
   if (adminCancelEditBtn) adminCancelEditBtn.classList.add('hidden');
 };
@@ -2431,8 +2428,8 @@ const updateAdminPanelAccess = () => {
   if (toggleAdminPanelBtn) {
     toggleAdminPanelBtn.classList.toggle('hidden', !canManageUsers);
   }
-  if (adminUserIsAdmin) adminUserIsAdmin.disabled = true;
-  if (adminUserCanVerify) adminUserCanVerify.disabled = true;
+  if (adminUserIsAdmin) adminUserIsAdmin.disabled = !canGrantAdminRole();
+  if (adminUserCanVerify) adminUserCanVerify.disabled = !canGrantAdminRole();
   if (!canManageUsers && adminPanel) {
     adminPanel.classList.add('hidden');
     if (toggleAdminPanelBtn) toggleAdminPanelBtn.textContent = 'Administração';
@@ -2463,6 +2460,7 @@ const saveManagedUser = async (userPayload) => {
         institutionKey: (persistedPayload.institutionKey || '').trim(),
         password: String(persistedPayload.password || '').trim(),
         active: persistedPayload.active !== false,
+        role: persistedPayload.role === 'superadmin' ? 'superadmin' : 'agent',
       }
     );
     const normalized = normalizeManagedUser(response?.user, response?.user?.uid || response?.user?.id);
@@ -2517,8 +2515,8 @@ const handleAdminUserSubmit = async () => {
   const cpf = String(adminUserCpf?.value || '').trim();
   const role = normalizeUpperText(adminUserRole?.value || '');
   const phone = String(adminUserPhone?.value || '').trim();
-  const isAdmin = false;
-  const canVerifyExternalReports = false;
+  const isAdmin = canGrantAdminRole() && Boolean(adminUserIsAdmin?.checked);
+  const canVerifyExternalReports = isAdmin;
   const institutionKey = selectedInstitutionValue;
   const institutionLabel = getInstitutionLabel(institutionKey) || '';
 
@@ -2568,7 +2566,7 @@ const handleAdminUserSubmit = async () => {
       passwordNeedsChange: true,
       institutionLabel,
       cpf,
-      role,
+      role: isAdmin ? 'superadmin' : 'agent',
       phone,
     });
 
@@ -2604,9 +2602,9 @@ const handleAdminUserSubmit = async () => {
   }
 
   if (existing) {
-    const wasAdmin = isSingleSuperadminUser(existing);
-    const adminsCount = managedUsers.filter((user) => isSingleSuperadminUser(user) && user.active !== false).length;
-    if (wasAdmin && !isSingleSuperadminUser({ name, institutionKey, active: true }) && adminsCount <= 1) {
+    const wasAdmin = existing.role === 'superadmin';
+    const adminsCount = managedUsers.filter((user) => user.role === 'superadmin' && user.active !== false).length;
+    if (wasAdmin && !isAdmin && adminsCount <= 1) {
       showAlert(adminUserError, 'Não é possível remover o papel do último administrador.');
       return;
     }
@@ -2617,9 +2615,9 @@ const handleAdminUserSubmit = async () => {
       email,
       institutionKey,
       institutionLabel: getInstitutionLabel(institutionKey),
-      role: isSingleSuperadminUser({ name, institutionKey, active: true }) ? 'superadmin' : 'agent',
-      isAdmin: isSingleSuperadminUser({ name, institutionKey, active: true }),
-      canVerifyExternalReports: isSingleSuperadminUser({ name, institutionKey, active: true }),
+      role: isAdmin ? 'superadmin' : 'agent',
+      isAdmin,
+      canVerifyExternalReports,
       active: true,
     };
 
@@ -2638,9 +2636,9 @@ const handleAdminUserSubmit = async () => {
     nextUser.roleLabel = role;
     nextUser.phone = phone;
     nextUser.email = email;
-    nextUser.role = isSingleSuperadminUser({ name, institutionKey, active: true }) ? 'superadmin' : 'agent';
-    nextUser.isAdmin = nextUser.role === 'superadmin';
-    nextUser.canVerifyExternalReports = nextUser.role === 'superadmin';
+    nextUser.role = isAdmin ? 'superadmin' : 'agent';
+    nextUser.isAdmin = isAdmin;
+    nextUser.canVerifyExternalReports = canVerifyExternalReports;
     nextUser.passwordNeedsChange = true;
     nextUser.institutionLabel = institutionLabel;
     nextUser.temporaryPassword = temporaryPassword;
