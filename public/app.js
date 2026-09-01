@@ -7556,7 +7556,6 @@ if (vehiclePlateInput) {
 addRecordBtn.addEventListener('click', () => {
   addRecord();
 });
-      if (id === 'infractorName') delete field.dataset.notFound;
 generatePdfBtn.addEventListener('click', generatePDF);
 if (generateFilteredPdfBtn) {
   generateFilteredPdfBtn.addEventListener('click', generatePDF);
