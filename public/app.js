@@ -552,6 +552,65 @@ const getRecurrenceKeys = (record) => {
 const getRecordRecurrenceCount = (record, recurrenceMap) =>
   Math.max(0, ...getRecurrenceKeys(record).map((key) => recurrenceMap[key] || 0));
 
+const buildRecurrenceGroups = (records) => {
+  const candidates = records
+    .map((record, index) => ({ record, index, keys: getRecurrenceKeys(record) }))
+    .filter(({ keys }) => keys.length);
+  const parent = new Map(candidates.map(({ index }) => [index, index]));
+  const find = (index) => {
+    const root = parent.get(index);
+    if (root === index) return index;
+    const resolved = find(root);
+    parent.set(index, resolved);
+    return resolved;
+  };
+  const join = (left, right) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+  const firstRecordByKey = new Map();
+
+  candidates.forEach(({ index, keys }) => {
+    keys.forEach((key) => {
+      if (firstRecordByKey.has(key)) join(index, firstRecordByKey.get(key));
+      else firstRecordByKey.set(key, index);
+    });
+  });
+
+  const components = new Map();
+  candidates.forEach((candidate) => {
+    const root = find(candidate.index);
+    if (!components.has(root)) components.set(root, []);
+    components.get(root).push(candidate);
+  });
+
+  return Array.from(components.values())
+    .map((component) => {
+      const groupRecords = component.map(({ record }) => record);
+      const keys = Array.from(new Set(component.flatMap(({ keys: itemKeys }) => itemKeys))).sort();
+      return {
+        id: `recurrence:${keys.join('|')}`,
+        keys,
+        records: groupRecords,
+        count: groupRecords.length,
+      };
+    })
+    .filter((group) => hasValidRecurrence(group.records));
+};
+
+const getRecurrenceGroupLabel = (group) => {
+  const namedRecord = group.records.find((record) => {
+    const name = normalizeText(record.infractorName);
+    return name && !name.startsWith('placa ');
+  });
+  const sample = namedRecord || group.records[0] || {};
+  return {
+    name: sample.infractorName || `PLACA ${group.keys.find((key) => key.startsWith('plate:'))?.slice(6).toUpperCase() || '--'}`,
+    doc: sample.infractorDoc || '',
+  };
+};
+
 const setDriverNotFoundState = (enabled) => {
   const infractorNameInput = document.getElementById('infractorName');
   if (!infractorNameInput) return;
@@ -4765,17 +4824,11 @@ const resendPendingRecord = async (index) => {
 };
 
 const buildDuplicateMap = (records) => {
-  const grouped = {};
-  records.forEach((record) => {
-    getRecurrenceKeys(record).forEach((key) => {
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(record);
-    });
-  });
-
   const map = {};
-  Object.entries(grouped).forEach(([key, driverRecords]) => {
-    map[key] = hasValidRecurrence(driverRecords) ? driverRecords.length : 1;
+  buildRecurrenceGroups(records).forEach((group) => {
+    group.keys.forEach((key) => {
+      map[key] = group.count;
+    });
   });
   return map;
 };
@@ -4919,7 +4972,7 @@ const renderDashboardCharts = (filtered, duplicateMap) => {
   }, {});
 
   const uniqueDrivers = new Set(filtered.map((record) => getDriverKey(record)));
-  const recurrenceDrivers = Object.values(duplicateMap).filter((count) => count > 1).length;
+  const recurrenceDrivers = buildRecurrenceGroups(filtered).length;
   const nonRecurrenceDrivers = Math.max(uniqueDrivers.size - recurrenceDrivers, 0);
 
   destroyDashboardChart('byDay');
@@ -5253,7 +5306,8 @@ const updateDashboard = () => {
       })
       .filter(Boolean)
   );
-  const duplicatesCount = Object.values(duplicateMap).filter((count) => count > 1).length;
+  const recurrenceGroups = buildRecurrenceGroups(filtered);
+  const duplicatesCount = recurrenceGroups.length;
   const currentMonthCount = filtered.filter((record) => (record.date || '').slice(0, 7) === currentYearMonth)
     .length;
 
@@ -5283,20 +5337,11 @@ const updateDashboard = () => {
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([label, value]) => ({ label, value: `${value} registros` }));
 
-  const duplicateDrivers = Object.entries(duplicateMap)
-    .filter(([, count]) => count > 1)
-    .map(([key, value]) => {
-      const sample = filtered.find((record) => getRecurrenceKeys(record).includes(key));
-      const name = key.startsWith('plate:')
-        ? `PLACA ${key.slice('plate:'.length).toUpperCase()}`
-        : sample?.infractorName || 'Condutor';
-      return {
-        driverKey: key,
-        name,
-        doc: sample?.infractorDoc || '',
-        count: value,
-      };
-    });
+  const duplicateDrivers = recurrenceGroups.map((group) => ({
+    driverKey: group.id,
+    ...getRecurrenceGroupLabel(group),
+    count: group.count,
+  }));
 
   renderStatList(byAgentList, byAgent, 'Nenhum registro no período.');
   renderStatList(byMonthList, byMonth, 'Nenhum registro no período.');
@@ -6163,8 +6208,7 @@ const extractCoordinates = (locationText) => {
 };
 
 const getDriverRecordsByKey = (driverKey) =>
-  allRecords
-    .filter((record) => getRecurrenceKeys(record).includes(driverKey))
+  (buildRecurrenceGroups(allRecords).find((group) => group.id === driverKey)?.records || [])
     .sort((a, b) => {
       const aTs = getRecordTimestamp(a) ?? getRecordCreatedAtTimestamp(a) ?? 0;
       const bTs = getRecordTimestamp(b) ?? getRecordCreatedAtTimestamp(b) ?? 0;
