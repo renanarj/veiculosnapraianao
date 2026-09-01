@@ -85,6 +85,10 @@
       <div class="modal-card">
         <h3 id="passwordChangeTitle">Defina sua nova senha</h3>
         <p id="passwordChangeMessage" class="card-label">Para concluir o acesso, escolha uma nova senha.</p>
+        <div id="passwordChangeCurrentGroup" class="form-group hidden">
+          <label for="passwordChangeCurrent" class="required">Senha atual</label>
+          <input type="password" id="passwordChangeCurrent" placeholder="Digite sua senha atual" autocomplete="current-password" />
+        </div>
         <div class="form-group">
           <label for="passwordChangeNew" class="required">Nova senha</label>
           <input type="password" id="passwordChangeNew" placeholder="Digite a nova senha" autocomplete="new-password" />
@@ -107,8 +111,14 @@
           <span class="app-subtitle">Sistema de cadastro de condutores</span>
         </div>
         <div class="app-user">
-          <span id="currentAgent">Agente: --</span>
-          <button type="button" id="logoutBtn" class="ghost-btn">Sair</button>
+          <button type="button" id="profileMenuBtn" class="profile-menu-btn" aria-expanded="false" aria-controls="profileMenu" aria-label="Abrir menu do perfil">
+            <span id="profileInitial" aria-hidden="true">U</span>
+          </button>
+          <div id="profileMenu" class="profile-menu hidden">
+            <strong id="currentAgent">Agente: --</strong>
+            <button type="button" id="changePasswordBtn" class="profile-menu-action">Alterar senha</button>
+            <button type="button" id="logoutBtn" class="profile-menu-action profile-menu-logout">Sair</button>
+          </div>
         </div>
       </header>
 

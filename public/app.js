@@ -86,6 +86,10 @@ const loginBtn = document.getElementById('loginBtn');
 const currentAgent = document.getElementById('currentAgent');
 const institutionInput = document.getElementById('institution');
 const institutionDisplay = document.getElementById('institutionDisplay');
+const profileMenuBtn = document.getElementById('profileMenuBtn');
+const profileMenu = document.getElementById('profileMenu');
+const profileInitial = document.getElementById('profileInitial');
+const changePasswordBtn = document.getElementById('changePasswordBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const views = document.querySelectorAll('.view');
 const openFormBtn = document.getElementById('openFormBtn');
@@ -144,6 +148,10 @@ const adminCancelEditBtn = document.getElementById('adminCancelEditBtn');
 const adminUserSuccess = document.getElementById('adminUserSuccess');
 const adminUserError = document.getElementById('adminUserError');
 const passwordChangeModal = document.getElementById('passwordChangeModal');
+const passwordChangeTitle = document.getElementById('passwordChangeTitle');
+const passwordChangeMessage = document.getElementById('passwordChangeMessage');
+const passwordChangeCurrentGroup = document.getElementById('passwordChangeCurrentGroup');
+const passwordChangeCurrent = document.getElementById('passwordChangeCurrent');
 const passwordChangeNew = document.getElementById('passwordChangeNew');
 const passwordChangeConfirm = document.getElementById('passwordChangeConfirm');
 const passwordChangeSubmitBtn = document.getElementById('passwordChangeSubmitBtn');
@@ -242,6 +250,7 @@ let currentAppVersion = '';
 let technicalReportContext = null;
 let technicalReportExtraPhotos = [];
 let pendingPasswordChangeUser = null;
+let passwordChangeRequiresCurrentPassword = false;
 let viewedRecord = null;
 const usedOccurrenceNumbers = new Set();
 const noPlateLabel = 'VEÍCULO SEM PLACA';
@@ -1204,7 +1213,7 @@ const ensureManagedUsersSeed = async (existingUsers = []) => {
     created.push(user);
   }
 
-  if (db) {
+  if (db && authMode === 'firebase_email') {
     for (const user of created) {
       try {
         await db
@@ -1240,37 +1249,22 @@ const loadManagedUserProfileByUid = async (uid) => {
 };
 
 const loadManagedUsersFromFirestore = async () => {
+  if (authMode !== 'firebase_email') return [];
   if (!db) return [];
-  if (authMode === 'firebase_email') {
-    const currentUid = auth?.currentUser?.uid || '';
-    if (!currentUid) return [];
-    const currentProfile = await loadManagedUserProfileByUid(currentUid);
-    if (!currentProfile || currentProfile.active === false) return [];
-    if (currentProfile.role !== 'superadmin') {
-      return [currentProfile];
-    }
-
-    try {
-      const snapshot = await db.collection(secureUsersCollection).limit(500).get();
-      return snapshot.docs
-        .map((doc) => normalizeManagedUser({ uid: doc.id, ...doc.data() }, doc.id))
-        .filter((user) => user && user.active !== false);
-    } catch {
-      return [currentProfile];
-    }
+  const currentUid = auth?.currentUser?.uid || '';
+  if (!currentUid) return [];
+  const currentProfile = await loadManagedUserProfileByUid(currentUid);
+  if (!currentProfile || currentProfile.active === false) return [];
+  if (currentProfile.role !== 'superadmin') {
+    return [currentProfile];
   }
-
   try {
-    const snapshot = await db
-      .collection(usersCollection)
-      .where('reportType', '==', userRecordType)
-      .limit(500)
-      .get();
+    const snapshot = await db.collection(secureUsersCollection).limit(500).get();
     return snapshot.docs
-      .map((doc) => normalizeManagedUser({ id: doc.id, ...doc.data() }, doc.id))
-      .filter((user) => user && user.name && user.institutionKey);
+      .map((doc) => normalizeManagedUser({ uid: doc.id, ...doc.data() }, doc.id))
+      .filter((user) => user && user.active !== false);
   } catch {
-    return [];
+    return [currentProfile];
   }
 };
 
@@ -1278,7 +1272,10 @@ const initManagedUsers = async () => {
   const remoteUsers = await loadManagedUsersFromFirestore();
   const fromRemote = remoteUsers.map((user) => normalizeManagedUser(user, user?.id)).filter(Boolean);
 
-  const preparedUsers = authMode === 'firebase_email' ? fromRemote : await ensureManagedUsersSeed(fromRemote);
+  const cachedUsers = loadUsersFromCache();
+  const preparedUsers = authMode === 'firebase_email'
+    ? fromRemote
+    : (cachedUsers.length ? cachedUsers : await ensureManagedUsersSeed());
   managedUsers = (preparedUsers.length ? preparedUsers : loadUsersFromCache()).map((user) => {
     const normalizedUser = normalizeManagedUser(user, user?.id);
     if (!normalizedUser) return null;
@@ -1294,33 +1291,6 @@ const initManagedUsers = async () => {
       canVerifyExternalReports: isAdmin,
     };
   }).filter(Boolean);
-
-  if (db && authMode !== 'firebase_email') {
-    const usersToEnforce = managedUsers.filter(
-      (user) =>
-        normalizeUpperText(user.name) === singleSuperadminProfile.profileName &&
-        user.institutionKey === singleSuperadminProfile.institutionKey
-    );
-    for (const user of usersToEnforce) {
-      try {
-        await db
-          .collection(usersCollection)
-          .doc(user.id)
-          .set(
-            {
-              email: user.email || '',
-              role: 'superadmin',
-              isAdmin: true,
-              canVerifyExternalReports: true,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-      } catch {
-        // segue sem bloquear carregamento
-      }
-    }
-  }
 
   saveUsersToCache(managedUsers);
 };
@@ -2470,19 +2440,6 @@ const saveManagedUser = async (userPayload) => {
     return normalized;
   }
 
-  if (!db) return normalizeManagedUser(persistedPayload, persistedPayload.id || persistedPayload.uid || '');
-  await db
-    .collection(usersCollection)
-    .doc(persistedPayload.id)
-    .set(
-      {
-        ...persistedPayload,
-        reportType: userRecordType,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
   return normalizeManagedUser(persistedPayload, persistedPayload.id || persistedPayload.uid || '');
 };
 
@@ -2495,9 +2452,6 @@ const deactivateManagedUser = async (user) => {
     return normalizeManagedUser(response?.user, response?.user?.uid || response?.user?.id);
   }
 
-  if (db) {
-    await db.collection(usersCollection).doc(user.id).delete();
-  }
   return null;
 };
 
@@ -2781,6 +2735,9 @@ const setLoggedUser = (agentName, institutionKey, userProfile = null) => {
   appShell.classList.remove('hidden');
   const institutionLabel = getInstitutionLabel(institutionKey);
   currentAgent.textContent = `${institutionLabel} • Agente: ${agentName}`;
+  if (profileInitial) profileInitial.textContent = normalizeUpperText(agentName).charAt(0) || 'U';
+  if (profileMenu) profileMenu.classList.add('hidden');
+  if (profileMenuBtn) profileMenuBtn.setAttribute('aria-expanded', 'false');
   if (institutionInput) institutionInput.value = institutionLabel;
   if (institutionDisplay) institutionDisplay.textContent = institutionLabel || '[Instituição]';
   agentSelect.value = agentName;
@@ -2818,22 +2775,45 @@ const showPublicReportScreen = () => {
 
 const closePasswordChangeModal = () => {
   if (passwordChangeModal) passwordChangeModal.classList.add('hidden');
+  if (passwordChangeCurrent) passwordChangeCurrent.value = '';
   if (passwordChangeNew) passwordChangeNew.value = '';
   if (passwordChangeConfirm) passwordChangeConfirm.value = '';
   if (passwordChangeError) passwordChangeError.textContent = '';
   pendingPasswordChangeUser = null;
+  passwordChangeRequiresCurrentPassword = false;
 };
 
-const openPasswordChangeModal = (user) => {
+const openPasswordChangeModal = (user, { requireCurrentPassword = false } = {}) => {
   pendingPasswordChangeUser = user;
+  passwordChangeRequiresCurrentPassword = requireCurrentPassword;
+  if (passwordChangeTitle) {
+    passwordChangeTitle.textContent = requireCurrentPassword ? 'Alterar senha' : 'Defina sua nova senha';
+  }
+  if (passwordChangeMessage) {
+    passwordChangeMessage.textContent = requireCurrentPassword
+      ? 'Informe sua senha atual e defina uma nova senha.'
+      : 'Para concluir o acesso, escolha uma nova senha.';
+  }
+  if (passwordChangeCurrentGroup) {
+    passwordChangeCurrentGroup.classList.toggle('hidden', !requireCurrentPassword);
+  }
+  if (passwordChangeCurrent) passwordChangeCurrent.value = '';
+  if (passwordChangeNew) passwordChangeNew.value = '';
+  if (passwordChangeConfirm) passwordChangeConfirm.value = '';
   if (passwordChangeModal) passwordChangeModal.classList.remove('hidden');
   if (passwordChangeError) passwordChangeError.textContent = '';
-  if (passwordChangeNew) passwordChangeNew.focus();
+  if (requireCurrentPassword && passwordChangeCurrent) passwordChangeCurrent.focus();
+  else if (passwordChangeNew) passwordChangeNew.focus();
 };
 
 const handlePasswordChangeSubmit = async () => {
+  const currentPassword = (passwordChangeCurrent?.value || '').trim();
   const newPassword = (passwordChangeNew?.value || '').trim();
   const confirmation = (passwordChangeConfirm?.value || '').trim();
+  if (passwordChangeRequiresCurrentPassword && !currentPassword) {
+    if (passwordChangeError) showAlert(passwordChangeError, 'Informe sua senha atual.');
+    return;
+  }
   if (!newPassword || !confirmation) {
     if (passwordChangeError) showAlert(passwordChangeError, 'Informe e confirme a nova senha.');
     return;
@@ -2860,17 +2840,34 @@ const handlePasswordChangeSubmit = async () => {
     let persistedUser = null;
 
     if (authMode === 'firebase_email') {
-      if (!functionsService) {
-        throw new Error('Serviço de autenticação indisponível para atualizar senha.');
-      }
-      const result = await callManagedUsersAdminFunction('completeFirstLoginPasswordChange', {
-        password: newPassword,
-      });
-      persistedUser = normalizeManagedUser(result?.user, result?.user?.uid || result?.user?.id);
-      if (!persistedUser) {
-        throw new Error('Não foi possível atualizar o perfil após a troca de senha.');
+      if (passwordChangeRequiresCurrentPassword) {
+        const email = auth?.currentUser?.email || pendingPasswordChangeUser.email || '';
+        const credential = firebase.auth.EmailAuthProvider.credential(email, currentPassword);
+        await auth.currentUser.reauthenticateWithCredential(credential);
+        await auth.currentUser.updatePassword(newPassword);
+        persistedUser = pendingPasswordChangeUser;
+      } else {
+        if (!functionsService) {
+          throw new Error('Serviço de autenticação indisponível para atualizar senha.');
+        }
+        const result = await callManagedUsersAdminFunction('completeFirstLoginPasswordChange', {
+          password: newPassword,
+        });
+        persistedUser = normalizeManagedUser(result?.user, result?.user?.uid || result?.user?.id);
+        if (!persistedUser) {
+          throw new Error('Não foi possível atualizar o perfil após a troca de senha.');
+        }
       }
     } else {
+      if (passwordChangeRequiresCurrentPassword) {
+        const isCurrentPasswordValid = await verifyManagedUserPassword(
+          pendingPasswordChangeUser,
+          currentPassword
+        );
+        if (!isCurrentPasswordValid) {
+          throw new Error('A senha atual não confere.');
+        }
+      }
       const nextUser = {
         ...pendingPasswordChangeUser,
         password: newPassword,
@@ -7694,6 +7691,32 @@ loginPassword.addEventListener('keypress', (event) => {
 });
 
 logoutBtn.addEventListener('click', clearSession);
+
+if (profileMenuBtn) {
+  profileMenuBtn.addEventListener('click', () => {
+    const isOpen = profileMenu && !profileMenu.classList.contains('hidden');
+    profileMenu?.classList.toggle('hidden', isOpen);
+    profileMenuBtn.setAttribute('aria-expanded', String(!isOpen));
+  });
+}
+
+if (changePasswordBtn) {
+  changePasswordBtn.addEventListener('click', () => {
+    const user = getLoggedManagedUser();
+    if (!user) return;
+    profileMenu?.classList.add('hidden');
+    profileMenuBtn?.setAttribute('aria-expanded', 'false');
+    openPasswordChangeModal(user, { requireCurrentPassword: true });
+  });
+}
+
+document.addEventListener('click', (event) => {
+  if (!profileMenu || !profileMenuBtn || profileMenu.classList.contains('hidden')) return;
+  if (!profileMenu.contains(event.target) && !profileMenuBtn.contains(event.target)) {
+    profileMenu.classList.add('hidden');
+    profileMenuBtn.setAttribute('aria-expanded', 'false');
+  }
+});
 
 if (openFormBtn) {
   openFormBtn.addEventListener('click', () => {
