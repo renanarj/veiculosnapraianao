@@ -1559,7 +1559,19 @@ body {
 }
 
 .profile-menu strong {
+  overflow-wrap: anywhere;
+}
+
+.profile-menu-details {
+  display: grid;
+  gap: 4px;
   padding: 6px 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.profile-menu-details span {
+  font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
 
@@ -1567,7 +1579,7 @@ body {
   width: 100%;
   min-height: 40px;
   margin: 0;
-  padding: 8px;
+  padding: 10px 8px;
   border-radius: 6px;
   background: transparent;
   color: var(--green-dark);
