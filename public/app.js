@@ -118,8 +118,12 @@ const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
 const toggleChartsBtn = document.getElementById('toggleChartsBtn');
 const toggleExternalReportsBtn = null;
 const toggleAdminPanelBtn = document.getElementById('toggleAdminPanelBtn');
+const toggleHeatMapBtn = document.getElementById('toggleHeatMapBtn');
 const dashboardFiltersPanel = document.getElementById('dashboardFiltersPanel');
 const dashboardChartsPanel = document.getElementById('dashboardChartsPanel');
+const heatMapPanel = document.getElementById('heatMapPanel');
+const heatMapElement = document.getElementById('heatMap');
+const heatMapSummary = document.getElementById('heatMapSummary');
 const externalReportsPanel = null;
 const externalReportsList = null;
 const externalReportsCount = null;
@@ -348,6 +352,11 @@ const dashboardCharts = {
   byLocation: null,
   recurrenceRate: null,
 };
+let heatMap = null;
+let heatMapBoundaryLayer = null;
+let heatMapPointsLayer = null;
+let heatMapHeatLayer = null;
+let heatMapBoundaryBounds = null;
 
 const chartPalette = ['#588526', '#7ca136', '#9bc441', '#3f6f1d', '#b7d86b', '#2f5522', '#d9eab3'];
 
@@ -2401,6 +2410,9 @@ const updateAdminPanelAccess = () => {
   if (toggleAdminPanelBtn) {
     toggleAdminPanelBtn.classList.toggle('hidden', !canManageUsers);
   }
+  if (toggleHeatMapBtn) {
+    toggleHeatMapBtn.classList.toggle('hidden', !canManageUsers);
+  }
   if (adminUserIsAdmin) adminUserIsAdmin.disabled = !canGrantAdminRole();
   if (adminUserCanVerify) adminUserCanVerify.disabled = !canGrantAdminRole();
   if (!canManageUsers && adminPanel) {
@@ -3800,6 +3812,83 @@ const isValidCoordinatePair = (value) => {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
 
   return latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+};
+
+const parseRecordCoordinates = (record) => {
+  const parts = String(record?.location || '')
+    .split(',')
+    .map((part) => Number(part.trim()));
+  if (parts.length !== 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
+  const [latitude, longitude] = parts;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return [latitude, longitude];
+};
+
+const loadHeatMapBoundary = async () => {
+  if (!heatMap || heatMapBoundaryLayer) return;
+  const response = await fetch('/apa-delta.kml', { cache: 'force-cache' });
+  if (!response.ok) throw new Error('Não foi possível carregar o limite da APA.');
+  const documentXml = new DOMParser().parseFromString(await response.text(), 'application/xml');
+  const rings = Array.from(documentXml.getElementsByTagName('coordinates'))
+    .map((node) => node.textContent.trim().split(/\s+/).map((item) => item.split(',').map(Number)))
+    .map((ring) => ring.filter(([longitude, latitude]) => Number.isFinite(latitude) && Number.isFinite(longitude)))
+    .filter((ring) => ring.length > 2)
+    .map((ring) => ring.map(([longitude, latitude]) => [latitude, longitude]));
+  if (!rings.length) throw new Error('O limite da APA não contém coordenadas válidas.');
+  heatMapBoundaryLayer = window.L.polygon(rings, {
+    color: '#1c7c3b',
+    weight: 2,
+    fillColor: '#80b73b',
+    fillOpacity: 0.05,
+  }).addTo(heatMap);
+  heatMapBoundaryBounds = heatMapBoundaryLayer.getBounds();
+};
+
+const renderHeatMap = async () => {
+  if (!heatMapElement || !heatMapPanel || heatMapPanel.classList.contains('hidden')) return;
+  if (!window.L) {
+    if (heatMapSummary) heatMapSummary.textContent = 'Não foi possível carregar a biblioteca do mapa.';
+    return;
+  }
+  if (!heatMap) {
+    heatMap = window.L.map(heatMapElement, { zoomControl: true });
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(heatMap);
+  }
+  try {
+    await loadHeatMapBoundary();
+  } catch (error) {
+    if (heatMapSummary) heatMapSummary.textContent = error.message || 'Não foi possível carregar o limite da APA.';
+    return;
+  }
+
+  const points = applyFilters(allRecords)
+    .map((record) => ({ record, coordinates: parseRecordCoordinates(record) }))
+    .filter(({ coordinates }) => coordinates);
+  if (heatMapPointsLayer) heatMap.removeLayer(heatMapPointsLayer);
+  if (heatMapHeatLayer) heatMap.removeLayer(heatMapHeatLayer);
+  heatMapHeatLayer = window.L.heatLayer
+    ? window.L.heatLayer(points.map(({ coordinates }) => [...coordinates, 0.7]), { radius: 28, blur: 22, maxZoom: 14 })
+    : null;
+  heatMapHeatLayer?.addTo(heatMap);
+  heatMapPointsLayer = window.L.layerGroup(
+    points.map(({ record, coordinates }) =>
+      window.L.circleMarker(coordinates, {
+        radius: 5,
+        color: '#0d5c2f',
+        weight: 1,
+        fillColor: '#ffffff',
+        fillOpacity: 0.9,
+      }).bindPopup(`<div class="heat-map-popup"><strong>Nº ${record.occurrenceNumber || '--'}</strong><span>${record.date || '--'} ${record.time || ''}</span><span>Placa: ${record.vehiclePlate || '--'}</span><span>Agente: ${record.agent || '--'}</span></div>`)
+    )
+  ).addTo(heatMap);
+  if (heatMapSummary) {
+    heatMapSummary.textContent = `${points.length} ocorrência${points.length === 1 ? '' : 's'} com coordenadas no filtro atual.`;
+  }
+  if (heatMapBoundaryBounds?.isValid()) heatMap.fitBounds(heatMapBoundaryBounds, { padding: [16, 16] });
+  setTimeout(() => heatMap.invalidateSize(), 0);
 };
 
 const sanitizeVehiclePlate = (value) =>
@@ -5350,6 +5439,9 @@ const updateDashboard = () => {
   renderDuplicateDriversList(duplicateDriversList, duplicateDrivers, 'Nenhum reincidente no período.');
   renderDashboardCharts(filtered, duplicateMap);
   renderDriversList(filtered);
+  if (heatMapPanel && !heatMapPanel.classList.contains('hidden')) {
+    void renderHeatMap();
+  }
 };
 
 const clearFormAfterRecord = () => {
@@ -7799,6 +7891,14 @@ if (toggleChartsBtn && dashboardChartsPanel) {
     if (!isHidden) {
       updateDashboard();
     }
+  });
+}
+
+if (toggleHeatMapBtn && heatMapPanel) {
+  toggleHeatMapBtn.addEventListener('click', () => {
+    const isHidden = heatMapPanel.classList.toggle('hidden');
+    toggleHeatMapBtn.textContent = isHidden ? 'Mapa de calor' : 'Ocultar mapa';
+    if (!isHidden) void renderHeatMap();
   });
 }
 

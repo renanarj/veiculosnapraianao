@@ -8,9 +8,12 @@
     <link rel="shortcut icon" type="image/png" href="/logo%20vpn.png" />
     <title>Veículos na Praia Não - Sistema de cadastro de condutores</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   </head>
   <body>
     <div id="entryScreen" class="auth-screen">
@@ -155,6 +158,7 @@
             <button type="button" id="toggleFiltersBtn" class="ghost-btn">Mostrar filtros</button>
             <button type="button" id="toggleChartsBtn" class="ghost-btn">Mostrar gráficos</button>
             <button type="button" id="toggleAdminPanelBtn" class="ghost-btn hidden">Administração</button>
+            <button type="button" id="toggleHeatMapBtn" class="ghost-btn hidden">Mapa de calor</button>
           </div>
 
           <div id="dashboardFiltersPanel" class="hidden">
@@ -253,6 +257,18 @@
                   <div class="chart-wrap"><canvas id="chartRecurrenceRate"></canvas></div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div id="heatMapPanel" class="hidden">
+            <div class="card heat-map-card">
+              <div class="filters-header">
+                <div>
+                  <h3>Mapa de calor de ocorrências</h3>
+                  <p id="heatMapSummary" class="card-label">Carregando pontos com coordenadas...</p>
+                </div>
+              </div>
+              <div id="heatMap" aria-label="Mapa da APA Delta do Parnaíba com ocorrências registradas"></div>
             </div>
           </div>
 

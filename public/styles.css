@@ -1652,6 +1652,32 @@ body {
   margin-bottom: 18px;
 }
 
+.heat-map-card {
+  margin-bottom: 18px;
+}
+
+#heatMap {
+  height: 560px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef5e5;
+}
+
+.heat-map-popup {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 760px) {
+  #heatMap {
+    height: 440px;
+  }
+}
+
 .filters-header {
   display: flex;
   align-items: center;
