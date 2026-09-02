@@ -20,7 +20,7 @@ service cloud.firestore {
     }
 
     function isInstitutionalRecord(data) {
-      return data.reportType != 'public_denuncia';
+      return !data.keys().hasAll(['reportType']) || data.reportType != 'public_denuncia';
     }
 
     match /userProfiles/{uid} {
