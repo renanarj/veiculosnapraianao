@@ -29,9 +29,9 @@ service cloud.firestore {
     }
 
     match /records/{docId} {
-      allow read: if signedIn() && isInstitutionalRecord(resource.data);
+      allow read: if isInstitutionalRecord(resource.data);
 
-      allow create: if signedIn() && isInstitutionalRecord(request.resource.data);
+      allow create: if isInstitutionalRecord(request.resource.data);
 
       allow update, delete: if isSuperadmin() && isInstitutionalRecord(resource.data);
     }
