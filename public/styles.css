@@ -1672,6 +1672,15 @@ body {
   font-size: 0.85rem;
 }
 
+.heat-map-popup button {
+  width: 100%;
+  min-height: 34px;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 760px) {
   #heatMap {
     height: 440px;

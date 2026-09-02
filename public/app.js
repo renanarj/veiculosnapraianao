@@ -3881,7 +3881,12 @@ const renderHeatMap = async () => {
         weight: 1,
         fillColor: '#ffffff',
         fillOpacity: 0.9,
-      }).bindPopup(`<div class="heat-map-popup"><strong>Nº ${record.occurrenceNumber || '--'}</strong><span>${record.date || '--'} ${record.time || ''}</span><span>Placa: ${record.vehiclePlate || '--'}</span><span>Agente: ${record.agent || '--'}</span></div>`)
+      }).bindPopup(
+        `<div class="heat-map-popup"><strong>Nº ${record.occurrenceNumber || '--'}</strong><span>${record.date || '--'} ${record.time || ''}</span><span>Placa: ${record.vehiclePlate || '--'}</span><span>Agente: ${record.agent || '--'}</span><span>Instituição: ${record.institution || '--'}</span><button type="button" class="heat-map-view-record">Visualizar ocorrência</button></div>`
+      ).on('popupopen', (event) => {
+        const viewButton = event.popup.getElement()?.querySelector('.heat-map-view-record');
+        viewButton?.addEventListener('click', () => showRecordDetail(record));
+      })
     )
   ).addTo(heatMap);
   if (heatMapSummary) {
