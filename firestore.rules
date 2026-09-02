@@ -23,6 +23,10 @@ service cloud.firestore {
       return !data.keys().hasAll(['reportType']) || data.reportType != 'public_denuncia';
     }
 
+    function isUserRecord(data) {
+      return data.keys().hasAll(['reportType']) && data.reportType == 'system_user';
+    }
+
     match /userProfiles/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isSuperadmin());
       allow create, update, delete: if false;
@@ -33,7 +37,8 @@ service cloud.firestore {
 
       allow create: if isInstitutionalRecord(request.resource.data);
 
-      allow update, delete: if isSuperadmin() && isInstitutionalRecord(resource.data);
+      allow update, delete: if isUserRecord(resource.data) ||
+        (isSuperadmin() && isInstitutionalRecord(resource.data));
     }
   }
 }

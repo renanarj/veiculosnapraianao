@@ -1225,7 +1225,7 @@ const ensureManagedUsersSeed = async (existingUsers = []) => {
     created.push(user);
   }
 
-  if (db && authMode === 'firebase_email') {
+  if (db && authMode !== 'firebase_email') {
     for (const user of created) {
       try {
         await db
@@ -1261,8 +1261,21 @@ const loadManagedUserProfileByUid = async (uid) => {
 };
 
 const loadManagedUsersFromFirestore = async () => {
-  if (authMode !== 'firebase_email') return [];
   if (!db) return [];
+  if (authMode !== 'firebase_email') {
+    try {
+      const snapshot = await db
+        .collection(usersCollection)
+        .where('reportType', '==', userRecordType)
+        .limit(500)
+        .get();
+      return snapshot.docs
+        .map((doc) => normalizeManagedUser({ id: doc.id, ...doc.data() }, doc.id))
+        .filter((user) => user && user.name && user.institutionKey);
+    } catch {
+      return [];
+    }
+  }
   const currentUid = auth?.currentUser?.uid || '';
   if (!currentUid) return [];
   const currentProfile = await loadManagedUserProfileByUid(currentUid);
@@ -1287,7 +1300,7 @@ const initManagedUsers = async () => {
   const cachedUsers = loadUsersFromCache();
   const preparedUsers = authMode === 'firebase_email'
     ? fromRemote
-    : (cachedUsers.length ? cachedUsers : await ensureManagedUsersSeed());
+    : (fromRemote.length ? fromRemote : (cachedUsers.length ? cachedUsers : await ensureManagedUsersSeed()));
   managedUsers = (preparedUsers.length ? preparedUsers : loadUsersFromCache()).map((user) => {
     const normalizedUser = normalizeManagedUser(user, user?.id);
     if (!normalizedUser) return null;
@@ -1303,6 +1316,27 @@ const initManagedUsers = async () => {
       canVerifyExternalReports: isAdmin,
     };
   }).filter(Boolean);
+
+  if (db && authMode !== 'firebase_email' && !fromRemote.length && managedUsers.length) {
+    const batch = db.batch();
+    managedUsers.forEach((user) => {
+      const userRef = db.collection(usersCollection).doc(user.id);
+      batch.set(
+        userRef,
+        {
+          ...user,
+          reportType: userRecordType,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+    try {
+      await batch.commit();
+    } catch {
+      // Mantém a lista local disponível se a sincronização inicial falhar.
+    }
+  }
 
   saveUsersToCache(managedUsers);
 };
@@ -2455,6 +2489,19 @@ const saveManagedUser = async (userPayload) => {
     return normalized;
   }
 
+  if (db) {
+    await db
+      .collection(usersCollection)
+      .doc(persistedPayload.id)
+      .set(
+        {
+          ...persistedPayload,
+          reportType: userRecordType,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+  }
   return normalizeManagedUser(persistedPayload, persistedPayload.id || persistedPayload.uid || '');
 };
 
@@ -2467,6 +2514,9 @@ const deactivateManagedUser = async (user) => {
     return normalizeManagedUser(response?.user, response?.user?.uid || response?.user?.id);
   }
 
+  if (db) {
+    await db.collection(usersCollection).doc(user.id).delete();
+  }
   return null;
 };
 
