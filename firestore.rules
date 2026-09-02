@@ -29,17 +29,9 @@ service cloud.firestore {
     }
 
     match /records/{docId} {
-      allow read: if signedIn() && (
-        isSuperadmin() ||
-        sameInstitution(resource.data.institutionKeySnapshot) ||
-        sameInstitution(resource.data.institutionKey)
-      ) && isInstitutionalRecord(resource.data);
+      allow read: if signedIn() && isInstitutionalRecord(resource.data);
 
-      allow create: if signedIn() && (
-        isSuperadmin() ||
-        request.resource.data.institutionKeySnapshot == requesterProfile().institutionKey ||
-        request.resource.data.institutionKey == requesterProfile().institutionKey
-      ) && isInstitutionalRecord(request.resource.data);
+      allow create: if signedIn() && isInstitutionalRecord(request.resource.data);
 
       allow update, delete: if isSuperadmin() && isInstitutionalRecord(resource.data);
     }
