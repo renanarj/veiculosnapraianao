@@ -3469,28 +3469,43 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   return { pdfUrl: '', photoUrls: mergedUrls, failedPhotos };
 };
 
+const drivePhotoLinksCache = new Map();
+
 const fetchDrivePhotoLinksByOccurrence = async (record) => {
   const occurrence = String(record?.occurrenceNumber || '').trim();
   if (!occurrence || !scriptUrl || localTestMode) return [];
-  try {
-    const url = `${scriptUrl}?action=listPhotos&occurrenceNumber=${encodeURIComponent(occurrence)}`;
-    const response = await withTimeout(fetch(url, { cache: 'no-store' }), googleSheetsTimeoutMs, 'Timeout ao buscar fotos.');
-    if (!response.ok) return [];
-    const result = JSON.parse((await response.text()) || '{}');
-    return Array.isArray(result?.photoLinks)
-      ? result.photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'))
-      : [];
-  } catch (error) {
-    return [];
+  if (drivePhotoLinksCache.has(occurrence)) return drivePhotoLinksCache.get(occurrence);
+  const url = `${scriptUrl}?action=listPhotos&occurrenceNumber=${encodeURIComponent(occurrence)}`;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await withTimeout(fetch(url), 25000, 'Timeout ao buscar fotos.');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = JSON.parse((await response.text()) || '{}');
+      if (result?.success === false) throw new Error(result.error || 'Erro ao listar fotos.');
+      const links = Array.isArray(result?.photoLinks)
+        ? result.photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'))
+        : [];
+      drivePhotoLinksCache.set(occurrence, links);
+      return links;
+    } catch (error) {
+      // O Apps Script ocasionalmente responde com 404 ou demora; tenta de novo.
+    }
   }
+  return [];
 };
 
 const withRemotePhotos = async (record) => {
   if (!record || getPendingUploadPhotos(record.photos).length) return record;
-  const known = collectRecordPhotoLinks(record);
-  if (known.length) return record;
+  if (collectRecordPhotoLinks(record).length) return record;
   const links = await fetchDrivePhotoLinksByOccurrence(record);
-  return links.length ? { ...record, photoUrls: links } : record;
+  if (!links.length) return record;
+  if (db && record.id) {
+    db.collection('records').doc(record.id).set(
+      { photoUrls: links, photosCount: links.length, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    ).catch(() => {});
+  }
+  return { ...record, photoUrls: links };
 };
 
 const syncRecordPhotosInBackground = (recordData, recordId) => {
@@ -5430,7 +5445,7 @@ const renderRecordDetail = async (originalRecord) => {
     <div><strong>Observações:</strong> ${record.observations || '--'}</div>
   `;
 
-  recordPhotos.innerHTML = '<p>Carregando fotos da ocorrência...</p>';
+  recordPhotos.innerHTML = '<p>Buscando fotos no Google Drive, pode levar alguns segundos...</p>';
   record = await withRemotePhotos(originalRecord);
   recordPhotos.innerHTML = '';
   const localPhotos = Array.isArray(record.photos)
