@@ -3566,11 +3566,11 @@ const fetchImageAsDataUrl = async (url) => {
       lastError = error;
     }
     try {
-      const response = await fetch(candidateUrl, { cache: 'no-store' });
+      const response = await withTimeout(fetch(candidateUrl, { cache: 'no-store' }), 20000, 'Timeout ao baixar imagem');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      const blob = await response.blob();
+      const blob = await withTimeout(response.blob(), 20000, 'Timeout ao baixar imagem');
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -5444,32 +5444,36 @@ const renderRecordDetail = async (originalRecord) => {
     recordPhotos.appendChild(img);
   });
   const uniquePhotoLinks = collectRecordPhotoLinks(record);
-  if (uniquePhotoLinks.length) {
-    const loading = document.createElement('p');
-    loading.textContent = 'Carregando fotos da ocorrência...';
-    recordPhotos.appendChild(loading);
-
-    const remotePhotos = await Promise.allSettled(
-      uniquePhotoLinks.map(async (url) => ({ url, dataUrl: await fetchImageAsDataUrl(url) }))
-    );
-    loading.remove();
-
-    remotePhotos.forEach((result, resultIndex) => {
-      const loaded = result.status === 'fulfilled' && typeof result.value.dataUrl === 'string';
-      const src = loaded ? result.value.dataUrl : getDirectDisplayUrl(uniquePhotoLinks[resultIndex]);
-      if (!src) return;
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = 'Foto do veículo';
-      img.referrerPolicy = 'no-referrer';
-      img.addEventListener('click', () => openPhotoModal(src, img.alt));
-      recordPhotos.appendChild(img);
+  uniquePhotoLinks.forEach((url) => {
+    const fileId = (String(url).match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/) || []).slice(1).find(Boolean);
+    const sources = fileId
+      ? [
+          `https://lh3.googleusercontent.com/d/${fileId}=s1600`,
+          `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
+          url,
+        ]
+      : [url];
+    let attempt = 0;
+    const img = document.createElement('img');
+    img.alt = 'Foto do veículo';
+    img.referrerPolicy = 'no-referrer';
+    img.loading = 'eager';
+    img.addEventListener('error', () => {
+      attempt += 1;
+      if (attempt < sources.length) {
+        img.src = sources[attempt];
+      } else {
+        img.remove();
+        if (!recordPhotos.querySelector('img')) {
+          recordPhotos.innerHTML = '<p>Não foi possível carregar as fotos desta ocorrência.</p>';
+        }
+      }
     });
-
-    if (!recordPhotos.children.length) {
-      recordPhotos.innerHTML = '<p>Não foi possível carregar as fotos desta ocorrência.</p>';
-    }
-  } else if (!localPhotos.length) {
+    img.addEventListener('click', () => openPhotoModal(img.currentSrc || img.src, img.alt));
+    img.src = sources[0];
+    recordPhotos.appendChild(img);
+  });
+  if (!uniquePhotoLinks.length && !localPhotos.length) {
     recordPhotos.innerHTML = '<p>Nenhuma foto cadastrada.</p>';
   }
 };
