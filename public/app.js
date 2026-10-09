@@ -319,7 +319,7 @@ const icmbioAgents = [
   'CONTINGÊNCIA',
 ];
 
-const scriptUrl = 'https://script.google.com/macros/s/AKfycbx85Y2cdD-NjXKb_vJvbQHoQJd3S3BZs7gKfxgDbfc4BNkuYHPcBtIfL9zpiqqwInm8/exec';
+const scriptUrl = 'https://script.google.com/macros/s/AKfycbwjMxIxVoXHD74LMOxyYcI6gcGa7NKItZL6rWUtTTyKJi9fZzLQUIuBFutUqSOhp6rb/exec';
 const userProvisioningScriptUrl = String(window.VNP_USER_PROVISIONING_URL || '').trim() || 'https://script.google.com/macros/s/AKfycbw2j6VHKATbyTtAoWpz6LTHAOQsBgWxAlYpwNJRL25_WzOOe0XV1P6kmWoxPnLgPOUX/exec';
 const userProvisioningNotificationEmail = String(window.VNP_USER_PROVISIONING_EMAIL || '').trim() || publicReportNotificationEmail;
 const userProvisioningTargetSheet = String(window.VNP_USER_PROVISIONING_SHEET || '').trim() || 'USUARIOS_CADASTRADOS';
@@ -418,9 +418,9 @@ const firebaseWriteTimeoutMs = 15000;
 const storageUploadTimeoutMs = 90000;
 const storageDownloadUrlTimeoutMs = 15000;
 const googleSheetsTimeoutMs = 30000;
-const uploadImageMaxWidth = 1600;
-const uploadImageMaxHeight = 1600;
-const uploadImageQuality = 0.82;
+const uploadImageMaxWidth = 1280;
+const uploadImageMaxHeight = 1280;
+const uploadImageQuality = 0.72;
 const uploadImageMimeType = 'image/jpeg';
 
 const getErrorMessage = (error, fallbackMessage = 'Erro desconhecido.') => {
@@ -3469,6 +3469,30 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   return { pdfUrl: '', photoUrls: mergedUrls, failedPhotos };
 };
 
+const fetchDrivePhotoLinksByOccurrence = async (record) => {
+  const occurrence = String(record?.occurrenceNumber || '').trim();
+  if (!occurrence || !scriptUrl || localTestMode) return [];
+  try {
+    const url = `${scriptUrl}?action=listPhotos&occurrenceNumber=${encodeURIComponent(occurrence)}`;
+    const response = await withTimeout(fetch(url, { cache: 'no-store' }), googleSheetsTimeoutMs, 'Timeout ao buscar fotos.');
+    if (!response.ok) return [];
+    const result = JSON.parse((await response.text()) || '{}');
+    return Array.isArray(result?.photoLinks)
+      ? result.photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'))
+      : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const withRemotePhotos = async (record) => {
+  if (!record || getPendingUploadPhotos(record.photos).length) return record;
+  const known = collectRecordPhotoLinks(record);
+  if (known.length) return record;
+  const links = await fetchDrivePhotoLinksByOccurrence(record);
+  return links.length ? { ...record, photoUrls: links } : record;
+};
+
 const syncRecordPhotosInBackground = (recordData, recordId) => {
   if (!db || !recordId) return;
   const pendingPhotos = getPendingUploadPhotos(recordData.photos);
@@ -3511,8 +3535,36 @@ const fetchImageAsDataUrl = async (url) => {
     candidates.push(`https://lh3.googleusercontent.com/d/${driveFileId}=s2000`);
   }
 
+  const loadViaImageElement = (candidateUrl) =>
+    new Promise((resolve, reject) => {
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          canvas.getContext('2d').drawImage(image, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      image.onerror = () => reject(new Error('Falha ao carregar imagem'));
+      image.src = candidateUrl;
+    });
+
   let lastError = null;
-  for (const candidateUrl of Array.from(new Set(candidates))) {
+  const orderedCandidates = Array.from(new Set(candidates));
+  if (driveFileId) {
+    orderedCandidates.unshift(`https://lh3.googleusercontent.com/d/${driveFileId}=s2000`);
+  }
+  for (const candidateUrl of Array.from(new Set(orderedCandidates))) {
+    try {
+      return await withTimeout(loadViaImageElement(candidateUrl), 20000, 'Timeout ao carregar imagem');
+    } catch (error) {
+      lastError = error;
+    }
     try {
       const response = await fetch(candidateUrl, { cache: 'no-store' });
       if (!response.ok) {
@@ -3531,6 +3583,12 @@ const fetchImageAsDataUrl = async (url) => {
   }
 
   throw lastError || new Error('Falha ao baixar imagem');
+};
+
+const getDirectDisplayUrl = (url) => {
+  const match = String(url || '').match(/\/file\/d\/([a-zA-Z0-9_-]+)|[?&]id=([a-zA-Z0-9_-]+)/);
+  const fileId = match ? match[1] || match[2] : '';
+  return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600` : String(url || '');
 };
 
 const normalizePhotoUrl = (url) => {
@@ -4670,19 +4728,33 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
       };
 
   let requestError = null;
+  const requestTimeoutMs = Math.min(180000, googleSheetsTimeoutMs + pendingUploadPhotos.length * 20000);
+  const requestBody = JSON.stringify(payload);
+  const maxAttempts = pendingUploadPhotos.length ? 2 : 1;
   try {
-    const response = await withTimeout(
-      fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      }),
-      googleSheetsTimeoutMs,
-      'Timeout ao enviar para planilha online.'
-    );
+    let response = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        response = await withTimeout(
+          fetch(scriptUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: requestBody,
+          }),
+          requestTimeoutMs,
+          'Timeout ao enviar para planilha online.'
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        break;
+      } catch (attemptError) {
+        if (attempt >= maxAttempts) throw attemptError;
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -4726,6 +4798,16 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
       photoLinks: [],
       synced: false,
       error: requestError || new Error('Sem conexão com a internet.'),
+      usedFallback: false,
+      confirmationUnavailable: false,
+    };
+  }
+
+  if (pendingUploadPhotos.length) {
+    return {
+      photoLinks: [],
+      synced: false,
+      error: requestError || new Error('Falha ao enviar as fotos.'),
       usedFallback: false,
       confirmationUnavailable: false,
     };
@@ -5330,8 +5412,9 @@ const copyRecordLink = (recordId) => {
   );
 };
 
-const renderRecordDetail = async (record) => {
-  if (!record) return;
+const renderRecordDetail = async (originalRecord) => {
+  if (!originalRecord) return;
+  let record = originalRecord;
   recordDetailHeader.textContent = `${record.infractorName || 'Condutor'} • Nº ${
     record.occurrenceNumber || '--'
   }`;
@@ -5347,6 +5430,8 @@ const renderRecordDetail = async (record) => {
     <div><strong>Observações:</strong> ${record.observations || '--'}</div>
   `;
 
+  recordPhotos.innerHTML = '<p>Carregando fotos da ocorrência...</p>';
+  record = await withRemotePhotos(originalRecord);
   recordPhotos.innerHTML = '';
   const localPhotos = Array.isArray(record.photos)
     ? record.photos.filter((photo) => typeof photo?.data === 'string' && photo.data.startsWith('data:image'))
@@ -5369,12 +5454,15 @@ const renderRecordDetail = async (record) => {
     );
     loading.remove();
 
-    remotePhotos.forEach((result) => {
-      if (result.status !== 'fulfilled' || typeof result.value.dataUrl !== 'string') return;
+    remotePhotos.forEach((result, resultIndex) => {
+      const loaded = result.status === 'fulfilled' && typeof result.value.dataUrl === 'string';
+      const src = loaded ? result.value.dataUrl : getDirectDisplayUrl(uniquePhotoLinks[resultIndex]);
+      if (!src) return;
       const img = document.createElement('img');
-      img.src = result.value.dataUrl;
+      img.src = src;
       img.alt = 'Foto do veículo';
-      img.addEventListener('click', () => openPhotoModal(result.value.dataUrl, img.alt));
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('click', () => openPhotoModal(src, img.alt));
       recordPhotos.appendChild(img);
     });
 
@@ -6164,7 +6252,8 @@ const appendRecordPhotoPages = (doc, record, pdfPhotos = []) => {
 };
 
 // Função para preparar links e imagens das fotos do registro para o PDF
-const prepareRecordPhotos = async (record) => {
+const prepareRecordPhotos = async (originalRecord) => {
+  const record = await withRemotePhotos(originalRecord);
   const externalLinks = collectRecordPhotoLinks(record);
   const preparedPhotos = [];
 
