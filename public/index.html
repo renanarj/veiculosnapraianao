@@ -296,6 +296,9 @@
 
                 <div class="admin-form-column">
                   <h4 id="adminFormTitle">Cadastrar usuário</h4>
+                  <p id="adminFirebaseAccountsNotice" class="card-label hidden">
+                    No modo de autenticação seguro, as contas e os perfis dos agentes são cadastrados no Console do Firebase. Este painel permite consultar usuários e gerenciar instituições.
+                  </p>
                   <form id="adminUserForm" class="auth-form" onsubmit="return false;">
                     <input type="hidden" id="adminEditingUserId" />
 
@@ -361,6 +364,7 @@
                       <h4>Gestão de Instituições</h4>
                       <span class="card-label">Criar, editar e excluir instituições personalizadas</span>
                     </div>
+                    <p id="localTestAdminStatus" class="card-label hidden" aria-live="polite"></p>
 
                     <div class="form-group">
                       <label for="adminInstitutionManageSelect">Instituição cadastrada</label>
@@ -853,8 +857,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <script src="/auth-config.js"></script>
     <script src="/app.js"></script>
   </body>

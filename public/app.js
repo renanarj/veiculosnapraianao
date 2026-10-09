@@ -270,12 +270,18 @@ const secureUsersCollection = 'userProfiles';
 const publicReportsCacheKey = 'publicReportsCache';
 const publicReportsSeenKey = 'publicReportsSeenProtocols';
 const usersCollection = 'records';
+const institutionsCollection = 'institutions';
 const userRecordType = 'system_user';
 const institutionRecordType = 'system_institution';
 const usersCacheKey = 'systemUsersCache';
 const sessionUserIdKey = 'loggedUserId';
 const authConfig = window.VNP_AUTH_CONFIG || {};
 const authMode = authConfig.mode === 'firebase_email' ? 'firebase_email' : 'legacy';
+const localTestProjectId = 'demo-veiculosnapraianao';
+const codespacesHostPrefix = window.location.hostname.match(/^(.*)-\d+\.app\.github\.dev$/)?.[1] || '';
+const localTestMode =
+  (['localhost', '127.0.0.1'].includes(window.location.hostname) || Boolean(codespacesHostPrefix)) &&
+  new URLSearchParams(window.location.search).get('localtest') === '1';
 const singleSuperadminProfile = {
   institutionKey: authConfig.superadmin?.institutionKey || 'icmbio',
   profileName: (authConfig.superadmin?.profileName || 'RENAN ARAUJO E SILVA')
@@ -319,7 +325,7 @@ const icmbioAgents = [
   'CONTINGÊNCIA',
 ];
 
-const scriptUrl = 'https://script.google.com/macros/s/AKfycbx85Y2cdD-NjXKb_vJvbQHoQJd3S3BZs7gKfxgDbfc4BNkuYHPcBtIfL9zpiqqwInm8/exec';
+const scriptUrl = 'https://script.google.com/macros/s/AKfycbwjMxIxVoXHD74LMOxyYcI6gcGa7NKItZL6rWUtTTyKJi9fZzLQUIuBFutUqSOhp6rb/exec';
 const userProvisioningScriptUrl = String(window.VNP_USER_PROVISIONING_URL || '').trim() || 'https://script.google.com/macros/s/AKfycbw2j6VHKATbyTtAoWpz6LTHAOQsBgWxAlYpwNJRL25_WzOOe0XV1P6kmWoxPnLgPOUX/exec';
 const userProvisioningNotificationEmail = String(window.VNP_USER_PROVISIONING_EMAIL || '').trim() || publicReportNotificationEmail;
 const userProvisioningTargetSheet = String(window.VNP_USER_PROVISIONING_SHEET || '').trim() || 'USUARIOS_CADASTRADOS';
@@ -341,9 +347,9 @@ const indexedDbName = 'veiculosNaPraiaNaoOffline';
 const indexedDbVersion = 1;
 const indexedDbStoreName = 'recordsCache';
 let db = null;
-let storage = null;
 let auth = null;
 let functionsService = null;
+let storage = null;
 let firestoreReadBlocked = false;
 const dashboardCharts = {
   byDay: null,
@@ -418,9 +424,9 @@ const firebaseWriteTimeoutMs = 15000;
 const storageUploadTimeoutMs = 90000;
 const storageDownloadUrlTimeoutMs = 15000;
 const googleSheetsTimeoutMs = 30000;
-const uploadImageMaxWidth = 1600;
-const uploadImageMaxHeight = 1600;
-const uploadImageQuality = 0.82;
+const uploadImageMaxWidth = 1280;
+const uploadImageMaxHeight = 1280;
+const uploadImageQuality = 0.72;
 const uploadImageMimeType = 'image/jpeg';
 
 const getErrorMessage = (error, fallbackMessage = 'Erro desconhecido.') => {
@@ -731,8 +737,8 @@ const saveInstitutionToFirestore = async (institutionKey, institutionLabel) => {
   }
 
   await db
-    .collection(usersCollection)
-    .doc(getInstitutionMetaDocId(institutionKey))
+    .collection(institutionsCollection)
+    .doc(institutionKey)
     .set(
       {
         reportType: institutionRecordType,
@@ -751,7 +757,7 @@ const deleteInstitutionFromFirestore = async (institutionKey) => {
     throw new Error('Conexão indisponível para excluir instituição online.');
   }
 
-  await db.collection(usersCollection).doc(getInstitutionMetaDocId(institutionKey)).delete();
+  await db.collection(institutionsCollection).doc(institutionKey).delete();
 };
 
 const loadCustomInstitutionsFromFirestore = async () => {
@@ -759,8 +765,8 @@ const loadCustomInstitutionsFromFirestore = async () => {
 
   try {
     const snapshot = await db
-      .collection(usersCollection)
-      .where('reportType', '==', institutionRecordType)
+      .collection(institutionsCollection)
+      .where('active', '==', true)
       .limit(500)
       .get();
 
@@ -773,6 +779,33 @@ const loadCustomInstitutionsFromFirestore = async () => {
       if (!institutionKey || !institutionLabel || defaultInstitutions[institutionKey]) return;
       remoteInstitutions[institutionKey] = institutionLabel;
     });
+
+    const currentUser = auth?.currentUser;
+    const currentProfile = currentUser ? await loadManagedUserProfileByUid(currentUser.uid) : null;
+    if (currentProfile?.role === 'superadmin' && currentProfile.active !== false) {
+      const legacySnapshot = await db
+        .collection(usersCollection)
+        .where('reportType', '==', institutionRecordType)
+        .limit(500)
+        .get();
+      for (const legacyDoc of legacySnapshot.docs) {
+        const legacyData = legacyDoc.data() || {};
+        const institutionKey = normalizeInstitutionKey(
+          legacyData.institutionKey || legacyDoc.id.replace(/^institution_/, '')
+        );
+        const institutionLabel = normalizeInstitutionLabel(legacyData.institutionLabel || legacyData.label || '');
+        if (!institutionKey || !institutionLabel || legacyData.active === false || defaultInstitutions[institutionKey]) continue;
+        remoteInstitutions[institutionKey] = institutionLabel;
+        try {
+          await db.collection(institutionsCollection).doc(institutionKey).set(
+            { institutionKey, institutionLabel, active: true },
+            { merge: true }
+          );
+        } catch {
+          // Mantém a instituição disponível na sessão administrativa para nova tentativa.
+        }
+      }
+    }
 
     return remoteInstitutions;
   } catch {
@@ -820,7 +853,7 @@ const refreshInstitutionManagerState = () => {
   const selectedKey = (adminInstitutionManageSelect?.value || '').trim();
   const selectedLabel = selectedKey ? getInstitutionLabel(selectedKey) : '';
   const customInstitutionSelected = selectedKey && !isDefaultInstitution(selectedKey);
-  const canEditInstitutions = authMode !== 'firebase_email';
+  const canEditInstitutions = isAdminUser();
 
   if (adminInstitutionNameInput && selectedLabel) {
     adminInstitutionNameInput.value = selectedLabel;
@@ -1045,24 +1078,6 @@ const sendWelcomeEmail = async ({ email, fullName, institutionLabel, temporaryPa
     'Atenciosamente,',
     'Equipe Veículos na Praia Não',
   ].join('\n');
-
-  if (functionsService) {
-    try {
-      const result = await callManagedUsersAdminFunction('sendWelcomeEmail', {
-        email,
-        fullName,
-        institutionLabel,
-        temporaryPassword,
-        subject,
-        body,
-      });
-      if (result?.ok) {
-        return { ok: true };
-      }
-    } catch {
-      // segue para fallback abaixo
-    }
-  }
 
   return { ok: false, reason: 'backend_unavailable' };
 };
@@ -1306,7 +1321,7 @@ const initManagedUsers = async () => {
     if (!normalizedUser) return null;
     const normalizedName = normalizeUpperText(normalizedUser.name);
     const isRootSuperadmin =
-      normalizedName === singleSuperadminProfile.profileName &&
+      authMode !== 'firebase_email' && normalizedName === singleSuperadminProfile.profileName &&
       normalizedUser.institutionKey === singleSuperadminProfile.institutionKey;
     const isAdmin = isRootSuperadmin || normalizedUser.role === 'superadmin' || normalizedUser.isAdmin;
     return {
@@ -2077,12 +2092,20 @@ const isFirebaseConfigured = () =>
 const initFirebase = () => {
   if (!window.firebase || !isFirebaseConfigured()) return;
   if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(
+      localTestMode ? { ...firebaseConfig, projectId: localTestProjectId } : firebaseConfig
+    );
   }
   auth = firebase.auth();
   db = firebase.firestore();
-  functionsService = firebase.functions();
-  storage = firebase.storage();
+  if (localTestMode) {
+    const emulatorPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+    auth.useEmulator(window.location.origin);
+    db.settings({
+      host: `${window.location.hostname}:${emulatorPort}`,
+      ssl: window.location.protocol === 'https:',
+    });
+  }
 };
 
 const waitForFirebaseAuthState = async () => {
@@ -2357,15 +2380,21 @@ const renderAdminUsers = () => {
       if (user.role === 'superadmin') badges.push('<span class="admin-user-badge">Superadmin</span>');
       if (user.email) badges.push('<span class="admin-user-badge">Login por e-mail</span>');
 
+      const accountActions = authMode === 'firebase_email'
+        ? ''
+        : `
+          <div class="admin-user-actions">
+            <button type="button" class="ghost-btn admin-user-edit" data-user-id="${user.id}">Editar</button>
+            <button type="button" class="ghost-btn admin-user-delete" data-user-id="${user.id}">Excluir</button>
+          </div>
+        `;
+
       item.innerHTML = `
         <div class="admin-user-main">
           <span class="admin-user-name">${user.name}</span>
           <div class="admin-user-badges">${badges.join('')}</div>
         </div>
-        <div class="admin-user-actions">
-          <button type="button" class="ghost-btn admin-user-edit" data-user-id="${user.id}">Editar</button>
-          <button type="button" class="ghost-btn admin-user-delete" data-user-id="${user.id}">Excluir</button>
-        </div>
+        ${accountActions}
       `;
       usersContainer.appendChild(item);
     });
@@ -2441,6 +2470,8 @@ const renderAdminUsers = () => {
 
 const updateAdminPanelAccess = () => {
   const canManageUsers = isAdminUser();
+  const manualAccountManagement = authMode === 'firebase_email';
+  refreshInstitutionManagerState();
   if (toggleAdminPanelBtn) {
     toggleAdminPanelBtn.classList.toggle('hidden', !canManageUsers);
   }
@@ -2449,6 +2480,17 @@ const updateAdminPanelAccess = () => {
   }
   if (adminUserIsAdmin) adminUserIsAdmin.disabled = !canGrantAdminRole();
   if (adminUserCanVerify) adminUserCanVerify.disabled = !canGrantAdminRole();
+  if (adminUserForm) adminUserForm.classList.toggle('hidden', manualAccountManagement);
+  const accountNotice = document.getElementById('adminFirebaseAccountsNotice');
+  if (accountNotice) accountNotice.classList.toggle('hidden', !manualAccountManagement);
+  const localAdminStatus = document.getElementById('localTestAdminStatus');
+  if (localAdminStatus) {
+    const user = getLoggedManagedUser();
+    localAdminStatus.classList.toggle('hidden', !localTestMode);
+    localAdminStatus.textContent = localTestMode
+      ? `Diagnóstico local: ${user?.name || 'sem perfil'} | papel: ${user?.role || 'não detectado'} | administrador: ${canManageUsers ? 'sim' : 'não'} | botão criar: ${adminInstitutionCreateBtn?.disabled ? 'bloqueado' : 'habilitado'}`
+      : '';
+  }
   if (!canManageUsers && adminPanel) {
     adminPanel.classList.add('hidden');
     if (toggleAdminPanelBtn) toggleAdminPanelBtn.textContent = 'Administração';
@@ -2915,16 +2957,15 @@ const handlePasswordChangeSubmit = async () => {
         await auth.currentUser.updatePassword(newPassword);
         persistedUser = pendingPasswordChangeUser;
       } else {
-        if (!functionsService) {
-          throw new Error('Serviço de autenticação indisponível para atualizar senha.');
+        if (!auth?.currentUser || !db) {
+          throw new Error('Autenticação ou Firestore indisponível para atualizar a senha.');
         }
-        const result = await callManagedUsersAdminFunction('completeFirstLoginPasswordChange', {
-          password: newPassword,
+        await auth.currentUser.updatePassword(newPassword);
+        await db.collection(secureUsersCollection).doc(auth.currentUser.uid).update({
+          passwordNeedsChange: false,
         });
-        persistedUser = normalizeManagedUser(result?.user, result?.user?.uid || result?.user?.id);
-        if (!persistedUser) {
-          throw new Error('Não foi possível atualizar o perfil após a troca de senha.');
-        }
+        persistedUser = await loadManagedUserProfileByUid(auth.currentUser.uid);
+        if (!persistedUser) throw new Error('Não foi possível atualizar o perfil após a troca de senha.');
       }
     } else {
       if (passwordChangeRequiresCurrentPassword) {
@@ -3042,9 +3083,20 @@ const handleLogin = async () => {
         return true;
       }
       setLoggedUser(profile.name, profile.institutionKey, profile);
+      await hydrateInstitutions();
+      allRecords = await loadRecords();
+      await backfillMissingInstitutions();
+      updateRecordsList();
+      populateMonthYearFilters();
       return true;
-    } catch {
-      showAlert(loginError, 'Não foi possível autenticar. Verifique e-mail e senha.');
+    } catch (error) {
+      console.error('Falha no login por e-mail:', error);
+      showAlert(
+        loginError,
+        localTestMode
+          ? `Falha no modo local: ${error?.code || ''} ${error?.message || 'erro desconhecido'}`.trim()
+          : 'Não foi possível autenticar. Verifique e-mail e senha.'
+      );
       return false;
     }
   }
@@ -3156,7 +3208,21 @@ const saveRecordsToIndexedDb = async (key, records) => {
 const loadRecordsFromFirestore = async () => {
   if (!db) return [];
   try {
-    const snapshot = await db.collection('records').orderBy('timestamp', 'desc').get();
+    let recordsQuery = db.collection('records');
+    if (authMode === 'firebase_email') {
+      const uid = auth?.currentUser?.uid || '';
+      const profile = uid ? await loadManagedUserProfileByUid(uid) : null;
+      if (!profile || profile.active === false) {
+        firestoreReadBlocked = true;
+        return [];
+      }
+      if (profile.role !== 'superadmin') {
+        recordsQuery = recordsQuery.where('institutionKeySnapshot', '==', profile.institutionKey);
+      }
+    } else {
+      recordsQuery = recordsQuery.orderBy('timestamp', 'desc');
+    }
+    const snapshot = await recordsQuery.get();
     firestoreReadBlocked = false;
     return snapshot.docs
       .map((doc) => ({ id: doc.id, photos: [], ...doc.data() }))
@@ -3167,6 +3233,10 @@ const loadRecordsFromFirestore = async () => {
           record.reportType !== institutionRecordType
       );
   } catch (error) {
+    if (authMode === 'firebase_email') {
+      firestoreReadBlocked = true;
+      return [];
+    }
     try {
       const snapshot = await db.collection('records').get();
       firestoreReadBlocked = false;
@@ -3246,10 +3316,17 @@ const mergeRecords = (primaryRecords = [], secondaryRecords = []) => {
 };
 
 const loadRecords = async () => {
-  const localRecords = loadRecordsFromStorage(storageKey);
-  const backupRecords = loadRecordsFromStorage(backupStorageKey);
-  const indexedDbRecords = await loadRecordsFromIndexedDb(storageKey);
-  const indexedDbBackupRecords = await loadRecordsFromIndexedDb(backupStorageKey);
+  if (authMode === 'firebase_email' && !auth?.currentUser?.uid) return [];
+  let userSuffix = '';
+  if (authMode === 'firebase_email') {
+    const profile = await loadManagedUserProfileByUid(auth.currentUser.uid);
+    if (!profile || profile.active === false) return [];
+    userSuffix = `:${auth.currentUser.uid}:${profile.role}:${profile.institutionKey}`;
+  }
+  const localRecords = loadRecordsFromStorage(`${storageKey}${userSuffix}`);
+  const backupRecords = loadRecordsFromStorage(`${backupStorageKey}${userSuffix}`);
+  const indexedDbRecords = await loadRecordsFromIndexedDb(`${storageKey}${userSuffix}`);
+  const indexedDbBackupRecords = await loadRecordsFromIndexedDb(`${backupStorageKey}${userSuffix}`);
   const browserCacheMerged = mergeRecords(localRecords, backupRecords);
   const indexedDbMerged = mergeRecords(indexedDbRecords, indexedDbBackupRecords);
   const localMerged = mergeRecords(browserCacheMerged, indexedDbMerged);
@@ -3263,18 +3340,32 @@ const loadRecords = async () => {
 
 const backfillMissingInstitutions = async () => {
   if (!Array.isArray(allRecords) || allRecords.length === 0) return;
+  if (authMode === 'firebase_email' && !isAdminUser()) return;
 
-  const defaultInstitution = institutions.icmbio;
   const firestoreUpdates = [];
   let hasChanges = false;
 
   allRecords = allRecords.map((record) => {
-    if ((record.institution || '').trim()) {
+    const recordInstitution = (record.institution || '').trim();
+    const institutionKey = record.institutionKeySnapshot || Object.keys(institutions).find(
+      (key) => normalizeText(institutions[key]) === normalizeText(recordInstitution)
+    ) || managedUsers.find(
+      (user) => normalizeUpperText(user.name) === normalizeUpperText(record.agent || '')
+    )?.institutionKey || '';
+    const institutionLabel = recordInstitution || getInstitutionLabel(institutionKey) || '';
+    const needsLabel = !recordInstitution && Boolean(institutionKey);
+    const needsKey = !record.institutionKeySnapshot && Boolean(institutionKey);
+
+    if (!needsLabel && !needsKey) {
       return record;
     }
 
     hasChanges = true;
-    const updatedRecord = { ...record, institution: defaultInstitution };
+    const updatedRecord = {
+      ...record,
+      ...(needsLabel ? { institution: institutionLabel } : {}),
+      ...(needsKey ? { institutionKeySnapshot: institutionKey } : {}),
+    };
 
     if (db && record.id) {
       firestoreUpdates.push(
@@ -3283,7 +3374,8 @@ const backfillMissingInstitutions = async () => {
           .doc(record.id)
           .set(
             {
-              institution: defaultInstitution,
+              ...(needsLabel ? { institution: institutionLabel } : {}),
+              ...(needsKey ? { institutionKeySnapshot: institutionKey } : {}),
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -3310,7 +3402,7 @@ const backfillMissingInstitutions = async () => {
 };
 
 const migrateLocalToFirestore = async () => {
-  if (!db) return [];
+  if (!db || authMode === 'firebase_email') return [];
   const alreadyMigrated = localStorage.getItem(migrationKey);
   if (alreadyMigrated) return [];
 
@@ -3335,14 +3427,18 @@ const migrateLocalToFirestore = async () => {
 };
 
 const saveRecordsToStorage = () => {
+  const user = authMode === 'firebase_email' ? getLoggedManagedUser() : null;
+  const userSuffix = user?.uid
+    ? `:${user.uid}:${user.role}:${user.institutionKey}`
+    : '';
   try {
-    localStorage.setItem(storageKey, JSON.stringify(allRecords));
-    localStorage.setItem(backupStorageKey, JSON.stringify(allRecords));
+    localStorage.setItem(`${storageKey}${userSuffix}`, JSON.stringify(allRecords));
+    localStorage.setItem(`${backupStorageKey}${userSuffix}`, JSON.stringify(allRecords));
   } catch (error) {
     console.error('Falha ao salvar registros no localStorage:', error);
   }
-  void saveRecordsToIndexedDb(storageKey, allRecords);
-  void saveRecordsToIndexedDb(backupStorageKey, allRecords);
+  void saveRecordsToIndexedDb(`${storageKey}${userSuffix}`, allRecords);
+  void saveRecordsToIndexedDb(`${backupStorageKey}${userSuffix}`, allRecords);
 };
 
 const persistLocalIfNeeded = () => {
@@ -3355,6 +3451,7 @@ const buildRecordPayload = (recordData, isNew) => {
   delete payload.syncPending;
   delete payload.syncIssues;
   payload.agentUid = payload.agentUid || getLoggedUserId() || auth?.currentUser?.uid || '';
+  payload.reportType = 'institutional_record';
   payload.agentNameSnapshot = payload.agentNameSnapshot || payload.agent || getLoggedAgentName() || '';
   payload.institutionKeySnapshot = payload.institutionKeySnapshot || getLoggedInstitutionKey() || '';
   payload.institutionLabelSnapshot =
@@ -3469,6 +3566,45 @@ const uploadRecordAssets = async (recordData, recordId, onProgress) => {
   return { pdfUrl: '', photoUrls: mergedUrls, failedPhotos };
 };
 
+const drivePhotoLinksCache = new Map();
+
+const fetchDrivePhotoLinksByOccurrence = async (record) => {
+  const occurrence = String(record?.occurrenceNumber || '').trim();
+  if (!occurrence || !scriptUrl || localTestMode) return [];
+  if (drivePhotoLinksCache.has(occurrence)) return drivePhotoLinksCache.get(occurrence);
+  const url = `${scriptUrl}?action=listPhotos&occurrenceNumber=${encodeURIComponent(occurrence)}`;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await withTimeout(fetch(url), 25000, 'Timeout ao buscar fotos.');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = JSON.parse((await response.text()) || '{}');
+      if (result?.success === false) throw new Error(result.error || 'Erro ao listar fotos.');
+      const links = Array.isArray(result?.photoLinks)
+        ? result.photoLinks.filter((link) => typeof link === 'string' && link.startsWith('http'))
+        : [];
+      drivePhotoLinksCache.set(occurrence, links);
+      return links;
+    } catch (error) {
+      // O Apps Script ocasionalmente responde com 404 ou demora; tenta de novo.
+    }
+  }
+  return [];
+};
+
+const withRemotePhotos = async (record) => {
+  if (!record || getPendingUploadPhotos(record.photos).length) return record;
+  if (collectRecordPhotoLinks(record).length) return record;
+  const links = await fetchDrivePhotoLinksByOccurrence(record);
+  if (!links.length) return record;
+  if (db && record.id) {
+    db.collection('records').doc(record.id).set(
+      { photoUrls: links, photosCount: links.length, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    ).catch(() => {});
+  }
+  return { ...record, photoUrls: links };
+};
+
 const syncRecordPhotosInBackground = (recordData, recordId) => {
   if (!db || !recordId) return;
   const pendingPhotos = getPendingUploadPhotos(recordData.photos);
@@ -3511,14 +3647,42 @@ const fetchImageAsDataUrl = async (url) => {
     candidates.push(`https://lh3.googleusercontent.com/d/${driveFileId}=s2000`);
   }
 
+  const loadViaImageElement = (candidateUrl) =>
+    new Promise((resolve, reject) => {
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          canvas.getContext('2d').drawImage(image, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      image.onerror = () => reject(new Error('Falha ao carregar imagem'));
+      image.src = candidateUrl;
+    });
+
   let lastError = null;
-  for (const candidateUrl of Array.from(new Set(candidates))) {
+  const orderedCandidates = Array.from(new Set(candidates));
+  if (driveFileId) {
+    orderedCandidates.unshift(`https://lh3.googleusercontent.com/d/${driveFileId}=s2000`);
+  }
+  for (const candidateUrl of Array.from(new Set(orderedCandidates))) {
     try {
-      const response = await fetch(candidateUrl, { cache: 'no-store' });
+      return await withTimeout(loadViaImageElement(candidateUrl), 20000, 'Timeout ao carregar imagem');
+    } catch (error) {
+      lastError = error;
+    }
+    try {
+      const response = await withTimeout(fetch(candidateUrl, { cache: 'no-store' }), 20000, 'Timeout ao baixar imagem');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      const blob = await response.blob();
+      const blob = await withTimeout(response.blob(), 20000, 'Timeout ao baixar imagem');
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -3531,6 +3695,12 @@ const fetchImageAsDataUrl = async (url) => {
   }
 
   throw lastError || new Error('Falha ao baixar imagem');
+};
+
+const getDirectDisplayUrl = (url) => {
+  const match = String(url || '').match(/\/file\/d\/([a-zA-Z0-9_-]+)|[?&]id=([a-zA-Z0-9_-]+)/);
+  const fileId = match ? match[1] || match[2] : '';
+  return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600` : String(url || '');
 };
 
 const normalizePhotoUrl = (url) => {
@@ -4538,6 +4708,7 @@ const submitPublicReport = async () => {
 };
 
 const sendUserProvisioningToBackend = async (userPayload) => {
+  if (localTestMode) return { ok: false, skipped: true };
   if (!userPayload?.email || !userProvisioningScriptUrl) {
     return { ok: false, skipped: true };
   }
@@ -4605,6 +4776,11 @@ const sendUserProvisioningToBackend = async (userPayload) => {
 
 const sendToGoogleSheets = async (recordData, options = {}) => {
   const isPublicReport = options.mode === 'public';
+  if (localTestMode) {
+    const successElement = options.successElement || alertSuccess;
+    if (successElement) showAlert(successElement, 'Modo de teste: dados mantidos apenas nos emuladores locais.');
+    return { photoLinks: [], synced: true, error: null, usedFallback: false };
+  }
   if (!scriptUrl) {
     const configError = new Error('URL da planilha online não configurada.');
     if (isPublicReport) {
@@ -4670,19 +4846,33 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
       };
 
   let requestError = null;
+  const requestTimeoutMs = Math.min(180000, googleSheetsTimeoutMs + pendingUploadPhotos.length * 20000);
+  const requestBody = JSON.stringify(payload);
+  const maxAttempts = pendingUploadPhotos.length ? 2 : 1;
   try {
-    const response = await withTimeout(
-      fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      }),
-      googleSheetsTimeoutMs,
-      'Timeout ao enviar para planilha online.'
-    );
+    let response = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        response = await withTimeout(
+          fetch(scriptUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: requestBody,
+          }),
+          requestTimeoutMs,
+          'Timeout ao enviar para planilha online.'
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        break;
+      } catch (attemptError) {
+        if (attempt >= maxAttempts) throw attemptError;
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -4726,6 +4916,16 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
       photoLinks: [],
       synced: false,
       error: requestError || new Error('Sem conexão com a internet.'),
+      usedFallback: false,
+      confirmationUnavailable: false,
+    };
+  }
+
+  if (pendingUploadPhotos.length) {
+    return {
+      photoLinks: [],
+      synced: false,
+      error: requestError || new Error('Falha ao enviar as fotos.'),
       usedFallback: false,
       confirmationUnavailable: false,
     };
@@ -5330,8 +5530,9 @@ const copyRecordLink = (recordId) => {
   );
 };
 
-const renderRecordDetail = async (record) => {
-  if (!record) return;
+const renderRecordDetail = async (originalRecord) => {
+  if (!originalRecord) return;
+  let record = originalRecord;
   recordDetailHeader.textContent = `${record.infractorName || 'Condutor'} • Nº ${
     record.occurrenceNumber || '--'
   }`;
@@ -5347,6 +5548,8 @@ const renderRecordDetail = async (record) => {
     <div><strong>Observações:</strong> ${record.observations || '--'}</div>
   `;
 
+  recordPhotos.innerHTML = '<p>Buscando fotos no Google Drive, pode levar alguns segundos...</p>';
+  record = await withRemotePhotos(originalRecord);
   recordPhotos.innerHTML = '';
   const localPhotos = Array.isArray(record.photos)
     ? record.photos.filter((photo) => typeof photo?.data === 'string' && photo.data.startsWith('data:image'))
@@ -5359,29 +5562,36 @@ const renderRecordDetail = async (record) => {
     recordPhotos.appendChild(img);
   });
   const uniquePhotoLinks = collectRecordPhotoLinks(record);
-  if (uniquePhotoLinks.length) {
-    const loading = document.createElement('p');
-    loading.textContent = 'Carregando fotos da ocorrência...';
-    recordPhotos.appendChild(loading);
-
-    const remotePhotos = await Promise.allSettled(
-      uniquePhotoLinks.map(async (url) => ({ url, dataUrl: await fetchImageAsDataUrl(url) }))
-    );
-    loading.remove();
-
-    remotePhotos.forEach((result) => {
-      if (result.status !== 'fulfilled' || typeof result.value.dataUrl !== 'string') return;
-      const img = document.createElement('img');
-      img.src = result.value.dataUrl;
-      img.alt = 'Foto do veículo';
-      img.addEventListener('click', () => openPhotoModal(result.value.dataUrl, img.alt));
-      recordPhotos.appendChild(img);
+  uniquePhotoLinks.forEach((url) => {
+    const fileId = (String(url).match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/) || []).slice(1).find(Boolean);
+    const sources = fileId
+      ? [
+          `https://lh3.googleusercontent.com/d/${fileId}=s1600`,
+          `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600`,
+          url,
+        ]
+      : [url];
+    let attempt = 0;
+    const img = document.createElement('img');
+    img.alt = 'Foto do veículo';
+    img.referrerPolicy = 'no-referrer';
+    img.loading = 'eager';
+    img.addEventListener('error', () => {
+      attempt += 1;
+      if (attempt < sources.length) {
+        img.src = sources[attempt];
+      } else {
+        img.remove();
+        if (!recordPhotos.querySelector('img')) {
+          recordPhotos.innerHTML = '<p>Não foi possível carregar as fotos desta ocorrência.</p>';
+        }
+      }
     });
-
-    if (!recordPhotos.children.length) {
-      recordPhotos.innerHTML = '<p>Não foi possível carregar as fotos desta ocorrência.</p>';
-    }
-  } else if (!localPhotos.length) {
+    img.addEventListener('click', () => openPhotoModal(img.currentSrc || img.src, img.alt));
+    img.src = sources[0];
+    recordPhotos.appendChild(img);
+  });
+  if (!uniquePhotoLinks.length && !localPhotos.length) {
     recordPhotos.innerHTML = '<p>Nenhuma foto cadastrada.</p>';
   }
 };
@@ -5739,10 +5949,6 @@ const addRecord = async () => {
       }
 
       persistLocalIfNeeded();
-    }
-
-    if (sheetResult.synced && db && recordData.id) {
-      syncRecordPhotosInBackground(recordData, recordData.id);
     }
 
     const reconciledIssues = clearResolvedPhotoSyncIssues(
@@ -6164,7 +6370,8 @@ const appendRecordPhotoPages = (doc, record, pdfPhotos = []) => {
 };
 
 // Função para preparar links e imagens das fotos do registro para o PDF
-const prepareRecordPhotos = async (record) => {
+const prepareRecordPhotos = async (originalRecord) => {
+  const record = await withRemotePhotos(originalRecord);
   const externalLinks = collectRecordPhotoLinks(record);
   const preparedPhotos = [];
 
@@ -7688,6 +7895,14 @@ window.addEventListener('load', () => {
         await showRecordDetail(recordId);
       }
     } catch (error) {
+      if (authMode === 'firebase_email') {
+        managedUsers = [];
+        allRecords = [];
+        showEntryScreen();
+        updateExternalReportsAccess();
+        updateAdminPanelAccess();
+        return;
+      }
       managedUsers = loadUsersFromCache();
       allRecords = mergeRecords(
         loadRecordsFromStorage(storageKey),
@@ -7832,11 +8047,6 @@ const executeLogin = async (event) => {
 };
 
 loginForm.addEventListener('submit', executeLogin);
-
-// Adicionar também um listener direto no botão para mobile
-if (loginBtn) {
-  loginBtn.addEventListener('click', executeLogin);
-}
 
 // Permitir login ao pressionar Enter no campo de senha
 loginPassword.addEventListener('keypress', (event) => {

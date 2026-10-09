@@ -1,44 +1,65 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
+    function hasActiveProfile() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
     }
 
     function isSuperadmin() {
-      return signedIn()
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'superadmin'
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+      return hasActiveProfile()
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'superadmin';
     }
 
     function requesterProfile() {
       return get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data;
     }
 
-    function sameInstitution(institutionKey) {
-      return signedIn() && requesterProfile().institutionKey == institutionKey;
-    }
-
     function isInstitutionalRecord(data) {
-      return !data.keys().hasAll(['reportType']) || data.reportType != 'public_denuncia';
-    }
-
-    function isUserRecord(data) {
-      return data.keys().hasAll(['reportType']) && data.reportType == 'system_user';
+      return !('reportType' in data) || data.reportType == 'institutional_record';
     }
 
     match /userProfiles/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isSuperadmin());
-      allow create, update, delete: if false;
+      allow read: if hasActiveProfile() && (request.auth.uid == uid || isSuperadmin());
+      allow create, delete: if false;
+      allow update: if hasActiveProfile()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['passwordNeedsChange'])
+        && request.resource.data.passwordNeedsChange == false;
+    }
+
+    match /institutions/{institutionKey} {
+      allow read: if resource.data.active == true;
+      allow create: if isSuperadmin()
+        && request.resource.data.institutionKey == institutionKey
+        && request.resource.data.active == true;
+      allow update: if isSuperadmin()
+        && resource.data.institutionKey == institutionKey
+        && request.resource.data.institutionKey == institutionKey
+        && request.resource.data.active == true;
+      allow delete: if isSuperadmin();
     }
 
     match /records/{docId} {
-      allow read: if isInstitutionalRecord(resource.data);
+      allow read: if isSuperadmin()
+        || (isInstitutionalRecord(resource.data)
+          && hasActiveProfile()
+          && resource.data.institutionKeySnapshot == requesterProfile().institutionKey);
 
-      allow create: if isInstitutionalRecord(request.resource.data);
+      allow create: if hasActiveProfile()
+        && request.resource.data.reportType == 'institutional_record'
+        && request.resource.data.agentUid == request.auth.uid
+        && request.resource.data.institutionKeySnapshot == requesterProfile().institutionKey;
 
-      allow update, delete: if isUserRecord(resource.data) ||
-        (isSuperadmin() && isInstitutionalRecord(resource.data));
+      allow update: if (isSuperadmin() && isInstitutionalRecord(resource.data))
+        || (hasActiveProfile()
+          && resource.data.agentUid == request.auth.uid
+          && resource.data.institutionKeySnapshot == requesterProfile().institutionKey
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['photoUrls', 'photosCount', 'updatedAt']));
+
+      allow delete: if isSuperadmin() && isInstitutionalRecord(resource.data);
     }
   }
 }
