@@ -3473,7 +3473,7 @@ const drivePhotoLinksCache = new Map();
 
 const fetchDrivePhotoLinksByOccurrence = async (record) => {
   const occurrence = String(record?.occurrenceNumber || '').trim();
-  if (!occurrence || !scriptUrl || localTestMode) return [];
+  if (!occurrence || !scriptUrl) return [];
   if (drivePhotoLinksCache.has(occurrence)) return drivePhotoLinksCache.get(occurrence);
   const url = `${scriptUrl}?action=listPhotos&occurrenceNumber=${encodeURIComponent(occurrence)}`;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
