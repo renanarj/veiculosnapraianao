@@ -37,8 +37,11 @@ service cloud.firestore {
 
       allow create: if isInstitutionalRecord(request.resource.data);
 
-      allow update, delete: if isUserRecord(resource.data) ||
+      allow update: if isUserRecord(resource.data) ||
         (isSuperadmin() && isInstitutionalRecord(resource.data));
+
+      // Login legado: o perfil de administrador existe só no app e o Firebase não recebe sessão autenticada.
+      allow delete: if isUserRecord(resource.data) || isInstitutionalRecord(resource.data);
     }
   }
 }

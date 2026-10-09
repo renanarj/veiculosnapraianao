@@ -5992,7 +5992,9 @@ const confirmRemoveRecord = async () => {
       await db.collection('records').doc(record.id).delete();
     }
   } catch (error) {
-    showAlert(alertError, 'Não foi possível remover no Firebase.');
+    closeDeleteModal();
+    showAlert(alertError, `Não foi possível remover o registro online: ${getErrorMessage(error, 'falha desconhecida')}`);
+    return;
   }
   
   allRecords.splice(pendingDeleteIndex, 1);
