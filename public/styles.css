@@ -215,6 +215,10 @@ button:disabled {
   z-index: 999;
 }
 
+#photoModal {
+  z-index: 1000;
+}
+
 .modal-card {
   width: min(420px, 100%);
   background: #ffffff;
