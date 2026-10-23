@@ -5788,16 +5788,23 @@ const validateRequiredFields = () => {
 };
 
 const missingLocationModal = document.getElementById('missingLocationModal');
+const missingLocationTitle = document.getElementById('missingLocationTitle');
+const missingLocationMessage = document.getElementById('missingLocationMessage');
 const missingLocationCancelBtn = document.getElementById('missingLocationCancelBtn');
 const missingLocationConfirmBtn = document.getElementById('missingLocationConfirmBtn');
+let pendingMissingDataConfirmation = null;
 
 const closeMissingLocationModal = () => {
   if (!missingLocationModal) return;
   missingLocationModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
+  pendingMissingDataConfirmation = null;
 };
 
-const openMissingLocationModal = () => {
+const openMissingDataModal = ({ title, message, skipKey }) => {
+  missingLocationTitle.textContent = title;
+  missingLocationMessage.textContent = message;
+  pendingMissingDataConfirmation = skipKey;
   missingLocationModal.classList.remove('hidden');
   document.body.classList.add('modal-open');
   if (missingLocationCancelBtn) missingLocationCancelBtn.focus();
@@ -5809,18 +5816,34 @@ if (missingLocationCancelBtn) {
 
 if (missingLocationConfirmBtn) {
   missingLocationConfirmBtn.addEventListener('click', () => {
+    const skipKey = pendingMissingDataConfirmation;
     closeMissingLocationModal();
-    addRecord({ skipLocationConfirm: true });
+    addRecord({ ...confirmedMissingData, [skipKey]: true });
   });
 }
 
-const addRecord = async ({ skipLocationConfirm = false } = {}) => {
+let confirmedMissingData = {};
+
+const addRecord = async (confirmed = {}) => {
   if (isRecordSaveInProgress) return;
   if (!validateRequiredFields()) return;
 
+  confirmedMissingData = confirmed;
   const locationField = document.getElementById('location');
-  if (!skipLocationConfirm && missingLocationModal && locationField && !locationField.value.trim()) {
-    openMissingLocationModal();
+  if (!confirmed.skipLocationConfirm && missingLocationModal && locationField && !locationField.value.trim()) {
+    openMissingDataModal({
+      title: 'Coordenadas não preenchidas',
+      message: 'O campo de coordenadas (Local da Ocorrência) está em branco. Você está ciente e deseja enviar o registro mesmo assim?',
+      skipKey: 'skipLocationConfirm',
+    });
+    return;
+  }
+  if (!confirmed.skipPhotoConfirm && missingLocationModal && photosData.length === 0) {
+    openMissingDataModal({
+      title: 'Nenhuma foto anexada',
+      message: 'Este registro não possui fotos anexadas. Você está ciente e deseja enviar o registro mesmo assim?',
+      skipKey: 'skipPhotoConfirm',
+    });
     return;
   }
 
