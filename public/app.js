@@ -8161,8 +8161,24 @@ document.querySelectorAll('[data-card-filter]').forEach((card) => {
   });
 });
 
+const dashboardPanelToggles = [
+  { panel: dashboardFiltersPanel, button: toggleFiltersBtn, closedLabel: 'Mostrar filtros' },
+  { panel: dashboardChartsPanel, button: toggleChartsBtn, closedLabel: 'Mostrar gráficos' },
+  { panel: adminPanel, button: toggleAdminPanelBtn, closedLabel: 'Administração' },
+  { panel: heatMapPanel, button: toggleHeatMapBtn, closedLabel: 'Mapa de calor' },
+];
+
+const closeOtherDashboardPanels = (currentPanel) => {
+  dashboardPanelToggles.forEach(({ panel, button, closedLabel }) => {
+    if (!panel || panel === currentPanel) return;
+    panel.classList.add('hidden');
+    if (button) button.textContent = closedLabel;
+  });
+};
+
 if (toggleFiltersBtn && dashboardFiltersPanel) {
   toggleFiltersBtn.addEventListener('click', () => {
+    closeOtherDashboardPanels(dashboardFiltersPanel);
     const isHidden = dashboardFiltersPanel.classList.toggle('hidden');
     toggleFiltersBtn.textContent = isHidden ? 'Mostrar filtros' : 'Ocultar filtros';
     if (!isHidden) {
@@ -8173,6 +8189,7 @@ if (toggleFiltersBtn && dashboardFiltersPanel) {
 
 if (toggleChartsBtn && dashboardChartsPanel) {
   toggleChartsBtn.addEventListener('click', () => {
+    closeOtherDashboardPanels(dashboardChartsPanel);
     const isHidden = dashboardChartsPanel.classList.toggle('hidden');
     toggleChartsBtn.textContent = isHidden ? 'Mostrar gráficos' : 'Ocultar gráficos';
     if (!isHidden) {
@@ -8183,6 +8200,7 @@ if (toggleChartsBtn && dashboardChartsPanel) {
 
 if (toggleHeatMapBtn && heatMapPanel) {
   toggleHeatMapBtn.addEventListener('click', () => {
+    closeOtherDashboardPanels(heatMapPanel);
     const isHidden = heatMapPanel.classList.toggle('hidden');
     toggleHeatMapBtn.textContent = isHidden ? 'Mapa de calor' : 'Ocultar mapa';
     if (!isHidden) void renderHeatMap();
@@ -8237,6 +8255,7 @@ if (loginInstitution) {
 
 if (toggleAdminPanelBtn && adminPanel) {
   toggleAdminPanelBtn.addEventListener('click', () => {
+    closeOtherDashboardPanels(adminPanel);
     const isHidden = adminPanel.classList.toggle('hidden');
     toggleAdminPanelBtn.textContent = isHidden ? 'Administração' : 'Ocultar administração';
     if (!isHidden) {
