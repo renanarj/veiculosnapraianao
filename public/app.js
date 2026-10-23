@@ -2705,6 +2705,7 @@ const handleAdminUserSubmit = async () => {
 
 const populateFilterAgents = () => {
   if (!filterAgent) return;
+  const selectedAgent = filterAgent.value;
   filterAgent.innerHTML = '<option value="">Todos</option>';
   const agents = Array.from(
     new Set(allRecords.map((record) => (record.agent || '').trim()).filter(Boolean))
@@ -2715,6 +2716,7 @@ const populateFilterAgents = () => {
     option.textContent = agentName;
     filterAgent.appendChild(option);
   });
+  if (selectedAgent) filterAgent.value = selectedAgent;
 };
 
 const populateInstitutionFilter = () => {
@@ -4848,7 +4850,7 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
   };
 };
 
-const updateRecordsList = () => {
+const renderRecordItems = () => {
   recordsList.innerHTML = '';
   if (allRecords.length === 0) {
     if (firestoreReadBlocked) {
@@ -4856,13 +4858,19 @@ const updateRecordsList = () => {
     } else {
       recordsList.innerHTML = '<p>Nenhum registro adicionado ainda.</p>';
     }
-    updateDashboard();
+    return;
+  }
+
+  const visibleRecords = new Set(applyFilters(allRecords));
+  if (visibleRecords.size === 0) {
+    recordsList.innerHTML = '<p>Nenhuma ocorrência encontrada para os filtros selecionados.</p>';
     return;
   }
 
   const duplicateMap = buildDuplicateMap(allRecords);
   const orderedRecords = allRecords
     .map((record, originalIndex) => ({ record, originalIndex }))
+    .filter(({ record }) => visibleRecords.has(record))
     .sort((a, b) => {
       const createdA = getRecordCreatedAtTimestamp(a.record);
       const createdB = getRecordCreatedAtTimestamp(b.record);
@@ -4946,9 +4954,13 @@ const updateRecordsList = () => {
     recordItem.appendChild(actionsDiv);
     recordsList.appendChild(recordItem);
   });
+};
 
-  populateFilterAgents();
-  populateInstitutionFilter();
+const updateRecordsList = () => {
+  if (allRecords.length > 0) {
+    populateFilterAgents();
+    populateInstitutionFilter();
+  }
   updateDashboard();
 };
 
@@ -5541,6 +5553,7 @@ const downloadViewedRecordPdf = async () => {
 
 const updateDashboard = () => {
   if (!statTotal) return;
+  renderRecordItems();
   const filtered = applyFilters(allRecords);
   const duplicateMap = buildDuplicateMap(filtered);
   const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
@@ -8036,6 +8049,20 @@ if (applyFiltersBtn) {
       return;
     }
     updateDashboard();
+  });
+}
+
+[filterInstitution, filterAgent, filterMonth, filterYear, filterDateFrom, filterDateTo, filterDuplicates]
+  .filter(Boolean)
+  .forEach((control) => {
+    control.addEventListener('change', () => {
+      if (!hasIncompleteMonthYearFilter()) updateDashboard();
+    });
+  });
+
+if (filterSearch) {
+  filterSearch.addEventListener('input', () => {
+    if (!hasIncompleteMonthYearFilter()) updateDashboard();
   });
 }
 
