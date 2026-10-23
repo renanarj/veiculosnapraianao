@@ -4850,8 +4850,68 @@ const sendToGoogleSheets = async (recordData, options = {}) => {
   };
 };
 
+let activeCardFilter = 'total';
+
+const cardFilterLabels = {
+  drivers: 'Condutores únicos (último registro de cada condutor)',
+  vehicles: 'Veículos únicos (último registro de cada veículo)',
+  recurrence: 'Reincidências',
+  month: 'Mês atual',
+};
+
+const getRecordLatestTimestamp = (record) => {
+  const created = getRecordCreatedAtTimestamp(record);
+  if (Number.isFinite(created)) return created;
+  const occurrence = getRecordTimestamp(record);
+  return Number.isFinite(occurrence) ? occurrence : 0;
+};
+
+const keepLatestRecordPerKey = (records, getKey) => {
+  const latest = new Map();
+  records.forEach((record, index) => {
+    const baseKey = getKey(record);
+    const key = baseKey || `registro:${index}`;
+    const current = latest.get(key);
+    if (!current || getRecordLatestTimestamp(record) > getRecordLatestTimestamp(current)) {
+      latest.set(key, record);
+    }
+  });
+  return new Set(latest.values());
+};
+
+const applyCardFilter = (records) => {
+  if (activeCardFilter === 'month') {
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return records.filter((record) => (record.date || '').slice(0, 7) === currentYearMonth);
+  }
+  if (activeCardFilter === 'recurrence') {
+    const grouped = new Set(buildRecurrenceGroups(records).flatMap((group) => group.records));
+    return records.filter((record) => grouped.has(record));
+  }
+  if (activeCardFilter === 'drivers') {
+    const kept = keepLatestRecordPerKey(records, getDriverKey);
+    return records.filter((record) => kept.has(record));
+  }
+  if (activeCardFilter === 'vehicles') {
+    const kept = keepLatestRecordPerKey(records, (record) => {
+      const plate = normalizeText(record.vehiclePlate);
+      return plate && plate !== normalizedNoPlateLabel ? plate : '';
+    });
+    return records.filter((record) => kept.has(record));
+  }
+  return records;
+};
+
+const updateCardFilterHighlight = () => {
+  document.querySelectorAll('[data-card-filter]').forEach((card) => {
+    card.classList.toggle('card-active', card.dataset.cardFilter === activeCardFilter && activeCardFilter !== 'total');
+  });
+};
+
 const renderRecordItems = () => {
   recordsList.innerHTML = '';
+  updateCardFilterHighlight();
   if (allRecords.length === 0) {
     if (firestoreReadBlocked) {
       recordsList.innerHTML = '<p>Registros temporariamente indisponíveis (permissão do Firestore). Ajuste as regras para restaurar a visualização.</p>';
@@ -4861,10 +4921,17 @@ const renderRecordItems = () => {
     return;
   }
 
-  const visibleRecords = new Set(applyFilters(allRecords));
+  const visibleRecords = new Set(applyCardFilter(applyFilters(allRecords)));
   if (visibleRecords.size === 0) {
     recordsList.innerHTML = '<p>Nenhuma ocorrência encontrada para os filtros selecionados.</p>';
     return;
+  }
+
+  if (activeCardFilter !== 'total' && cardFilterLabels[activeCardFilter]) {
+    const note = document.createElement('p');
+    note.className = 'records-filter-note';
+    note.textContent = `Exibindo: ${cardFilterLabels[activeCardFilter]} — ${visibleRecords.size} registro(s)`;
+    recordsList.appendChild(note);
   }
 
   const duplicateMap = buildDuplicateMap(allRecords);
@@ -8066,6 +8133,34 @@ if (filterSearch) {
   });
 }
 
+document.querySelectorAll('[data-card-filter]').forEach((card) => {
+  const activate = () => {
+    const selected = card.dataset.cardFilter;
+    if (selected === 'total') {
+      activeCardFilter = 'total';
+      if (filterInstitution) filterInstitution.value = '';
+      filterAgent.value = '';
+      filterMonth.value = '';
+      filterYear.value = '';
+      filterDateFrom.value = '';
+      filterDateTo.value = '';
+      filterSearch.value = '';
+      filterDuplicates.checked = false;
+    } else {
+      activeCardFilter = activeCardFilter === selected ? 'total' : selected;
+    }
+    updateDashboard();
+    recordsList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  card.addEventListener('click', activate);
+  card.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate();
+    }
+  });
+});
+
 if (toggleFiltersBtn && dashboardFiltersPanel) {
   toggleFiltersBtn.addEventListener('click', () => {
     const isHidden = dashboardFiltersPanel.classList.toggle('hidden');
@@ -8105,6 +8200,7 @@ clearFiltersBtn.addEventListener('click', () => {
   filterDateTo.value = '';
   filterSearch.value = '';
   filterDuplicates.checked = false;
+  activeCardFilter = 'total';
   updateDashboard();
 });
 

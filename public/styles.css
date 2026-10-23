@@ -2487,3 +2487,25 @@ body {
     width: 100%;
   }
 }
+.card-clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.card-clickable:hover,
+.card-clickable:focus-visible {
+  transform: translateY(-2px);
+  border-color: #588526;
+  outline: none;
+}
+
+.card-clickable.card-active {
+  border-color: #3f6f1d;
+  box-shadow: 0 0 0 2px #588526, var(--shadow);
+}
+
+.records-filter-note {
+  font-weight: 600;
+  color: #3f6f1d;
+  margin: 0 0 0.75rem;
+}
