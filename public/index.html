@@ -461,7 +461,7 @@
         </div>
 
         <div class="form-group">
-          <label for="location">Local da Ocorrência (opcional)</label>
+          <label for="location">Local da Ocorrência</label>
           <div class="location-container">
             <input
               type="text"
@@ -752,6 +752,24 @@
               <span id="savingProgressPercent" class="saving-progress-percent">0%</span>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="missingLocationModal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="missingLocationTitle"
+      aria-describedby="missingLocationMessage"
+    >
+      <div class="modal-card">
+        <h3 id="missingLocationTitle">Coordenadas não preenchidas</h3>
+        <p id="missingLocationMessage">O campo de coordenadas (Local da Ocorrência) está em branco. Você está ciente e deseja enviar o registro mesmo assim?</p>
+        <div class="modal-actions">
+          <button type="button" id="missingLocationCancelBtn" class="ghost-btn">Voltar e preencher</button>
+          <button type="button" id="missingLocationConfirmBtn">Estou ciente, enviar</button>
         </div>
       </div>
     </div>

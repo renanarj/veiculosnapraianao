@@ -5787,9 +5787,42 @@ const validateRequiredFields = () => {
   return isValid;
 };
 
-const addRecord = async () => {
+const missingLocationModal = document.getElementById('missingLocationModal');
+const missingLocationCancelBtn = document.getElementById('missingLocationCancelBtn');
+const missingLocationConfirmBtn = document.getElementById('missingLocationConfirmBtn');
+
+const closeMissingLocationModal = () => {
+  if (!missingLocationModal) return;
+  missingLocationModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+};
+
+const openMissingLocationModal = () => {
+  missingLocationModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  if (missingLocationCancelBtn) missingLocationCancelBtn.focus();
+};
+
+if (missingLocationCancelBtn) {
+  missingLocationCancelBtn.addEventListener('click', closeMissingLocationModal);
+}
+
+if (missingLocationConfirmBtn) {
+  missingLocationConfirmBtn.addEventListener('click', () => {
+    closeMissingLocationModal();
+    addRecord({ skipLocationConfirm: true });
+  });
+}
+
+const addRecord = async ({ skipLocationConfirm = false } = {}) => {
   if (isRecordSaveInProgress) return;
   if (!validateRequiredFields()) return;
+
+  const locationField = document.getElementById('location');
+  if (!skipLocationConfirm && missingLocationModal && locationField && !locationField.value.trim()) {
+    openMissingLocationModal();
+    return;
+  }
 
   isRecordSaveInProgress = true;
 
